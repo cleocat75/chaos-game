@@ -1147,6 +1147,25 @@ $('volDice').oninput = (e) => SND.setVol('dice', +e.target.value);
 $('sound').onclick = async () => { const on = await SND.toggle(); $('sound').textContent = on ? '♪ Sound on (click to mute)' : '♪ Turn sound on'; $('sound').classList.toggle('on', on); };
 window.addEventListener('resize', () => { dirty = true; });
 resize();
+
+// ---------------- visit counter: one ping to GoatCounter per visit (no cookies, no outside script) ----------------
+// Open the page with #toggle-goatcounter to stop (or restart) counting your own visits on that browser.
+(() => {
+  let skip = false; try { skip = localStorage.getItem('skipgc') === 't'; } catch {}
+  if (location.hash === '#toggle-goatcounter') {
+    skip = !skip; try { skip ? localStorage.setItem('skipgc', 't') : localStorage.removeItem('skipgc'); } catch {}
+    history.replaceState(null, '', location.pathname + location.search);
+    const d = document.createElement('div');
+    d.textContent = skip ? 'Your visits on this browser are no longer counted.' : 'Your visits on this browser are counted again.';
+    d.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#222d;color:#fff;padding:10px 16px;border-radius:8px;font:14px system-ui,sans-serif;z-index:99';
+    document.body.appendChild(d); setTimeout(() => d.remove(), 6000); return;
+  }
+  if (skip || navigator.webdriver || location.hostname !== 'cleocat75.github.io') return;
+  const q = new URLSearchParams({ p: location.pathname, t: document.title, r: document.referrer,
+    s: [screen.width, screen.height, window.devicePixelRatio || 1].join(','), rnd: Math.random().toString(36).slice(2) });
+  new Image().src = 'https://cleocat75.goatcounter.com/count?' + q;
+})();
+
 if (!location.hash || !loadHash()) applyPreset(0);
 requestAnimationFrame(frame);
 })();
