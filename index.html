@@ -135,6 +135,14 @@
     </section>
 
     <section>
+      <div class="t">Sound</div>
+      <button id="sound" style="width:100%">♪ Turn sound on</button>
+      <div class="hint">Every corner is a note, like in the video: you hear the dice.</div>
+      <div class="row"><label>Music</label><input type="range" id="volMusic" min="0" max="1" step="0.01"></div>
+      <div class="row"><label>Dice notes</label><input type="range" id="volDice" min="0" max="1" step="0.01"></div>
+    </section>
+
+    <section>
       <div class="t">Look</div>
       <div class="row"><label>Colour</label>
         <select id="color"><option value="corner">by corner (like the video)</option><option value="pure">by corner, pure</option><option value="age">by when it landed</option><option value="gold">gold</option></select></div>
@@ -691,7 +699,7 @@ function applyPreset(i) {
   if (p.rule) for (const r of p.rule) for (const k of geom.named[r]) P.forbid[k] = true;
   cam.yaw = 0.65; cam.pitch = 0.35;
   syncUI(); palette(); regenerate(true);
-  S = P.max; playing = false;
+  S = P.max; playing = false; SND.intro();
 }
 function chipLabel(k, n) {
   if (k === 0) return 'the same';
@@ -729,7 +737,7 @@ function syncUI() {
   $('outline').checked = P.outline; $('spin').checked = P.spin; $('spinLab').classList.toggle('hide', !geom.is3d);
   if (!ifs) buildChips();
 }
-function shapeChanged(refit) { geom = geometry(P); P.forbid = []; syncUI(); palette(); regenerate(refit); }
+function shapeChanged(refit) { geom = geometry(P); P.forbid = []; syncUI(); palette(); regenerate(refit); SND.intro(); }
 $('preset').onchange = (e) => { if (e.target.value !== '') applyPreset(+e.target.value); };
 $('shape').onchange = (e) => {
   P.shape = e.target.value;
@@ -755,9 +763,10 @@ $('outline').onchange = (e) => { P.outline = e.target.checked; dirty = true; sav
 $('spin').onchange = (e) => { P.spin = e.target.checked; saveHash(); };
 $('reroll').onclick = () => { P.seed = (Math.random() * 2 ** 31) >>> 0; regenerate(false); };
 $('resetView').onclick = () => { cam.yaw = 0.65; cam.pitch = 0.35; fit(); };
-$('dots').oninput = (e) => { playing = false; S = dotsOf(+e.target.value); dirty = true; };
+$('dots').oninput = (e) => { playing = false; const a = Math.floor(S); S = dotsOf(+e.target.value); dirty = true; if (S !== a) SND.scrub(a, S); };
 $('dots').onchange = () => saveHash();
-const stepBy = (d) => { playing = false; S = Math.max(0, Math.min(P.max, Math.floor(S) + d)); dirty = true; saveHash(); };
+const stepBy = (d) => { playing = false; const a = Math.floor(S); S = Math.max(0, Math.min(P.max, a + d)); dirty = true; saveHash();
+  if (S > a) SND.dots(Math.min(a, generated), Math.min(S, generated), 0.6, true); else if (S < a) SND.back(S); };
 $('bm').onclick = (e) => stepBy(e.shiftKey ? -10 : -1);
 $('bp').onclick = (e) => stepBy(e.shiftKey ? 10 : 1);
 $('b0').onclick = () => { playing = false; S = 0; dirty = true; };
@@ -835,17 +844,294 @@ function loadHash() {
   } catch { return false; }
 }
 
+// ---------------- sound: the video's score, live (ChaosGame/music/cg_score.py v5) ----------------
+// Every corner is a mallet note; a pad changes chord every 2 bars at 96 bpm with a soft sub; a thump + brush groove
+// joins while the dots pour; the die rattles when a rule blocks a roll. All in 5-limit just intonation on C, the same
+// table for mallets, pads and sub, so nothing beats against anything.
+const SND = (() => {
+  const C4 = 261.6256, JI = { 0: 1, 2: 9 / 8, 4: 5 / 4, 5: 4 / 3, 7: 3 / 2, 9: 5 / 3, 10: 16 / 9, 11: 15 / 8 };
+  const D_LOW = new Set(['Dm7', 'Bbmaj7', 'F', 'Fmaj7', 'Am', 'Am7']);
+  const CH = { C: [48, 55, 64, 67], Cadd9: [48, 55, 62, 64, 67], Fmaj7: [41, 48, 57, 64], Gsus: [43, 50, 60, 62], Cmaj7: [48, 55, 59, 64],
+    Dm7: [38, 50, 57, 60, 65], Bbmaj7: [46, 50, 57, 62], Am7: [45, 52, 55, 60], Em7: [40, 52, 55, 62] };
+  const ROOT = { C: 36, Cadd9: 36, Fmaj7: 29, Gsus: 31, Cmaj7: 36, Dm7: 26, Bbmaj7: 34, Am7: 33, Em7: 28 };
+  const PROG = { main: ['C', 'Am7', 'Fmaj7', 'Gsus', 'Cadd9', 'Am7', 'Fmaj7', 'Em7', 'Gsus'], square: ['Em7', 'Cmaj7', 'Fmaj7', 'Am7', 'Gsus', 'Cmaj7'],
+    pyramid: ['Dm7', 'Bbmaj7', 'Dm7', 'Fmaj7'], fern: ['Gsus', 'Cadd9', 'Am7', 'Fmaj7', 'C', 'Am7'] };
+  const LAD = [60, 64, 67, 71, 72, 74, 76, 79, 81, 69, 62, 65, 57, 55, 59, 52, 48, 53, 83, 84];
+  const BEAT = 60 / 96, BAR = 4 * BEAT, PHRASE = 2 * BAR;
+  let ac = null, out, musicG, diceG, revIn, hallIn, on = false, t0 = 0, nextChord = 0, nextBeat = 0, chordNow = 'C';
+  let lastName = '', groove = 0, grooveWant = 0, budget = 0, lastScrub = 0, progK = 0;
+  const cache = new Map();
+  const vol = { music: 0.8, dice: 0.8 };
+  try { const v = JSON.parse(localStorage.getItem('cg-sound') || '{}'); Object.assign(vol, v.vol || {}); } catch (e) { /* private mode */ }
+
+  function jhz(m, chord) {
+    const pc = ((m % 12) + 12) % 12; let r = JI[pc];
+    if (r == null) return 440 * 2 ** ((m - 69) / 12);
+    if (pc === 2 && D_LOW.has(chord)) r = 10 / 9;
+    return C4 * 2 ** (Math.floor(m / 12) - 5) * r;
+  }
+  // one-pole filters for the buffers we synthesise
+  function lp(x, fc, sr) { const a = 1 - Math.exp(-2 * Math.PI * fc / sr); let y = 0; for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); x[i] = y; } }
+  function hp(x, fc, sr) { const a = Math.exp(-2 * Math.PI * fc / sr); let px = 0, y = 0; for (let i = 0; i < x.length; i++) { y = a * (y + x[i] - px); px = x[i]; x[i] = y; } }
+  function norm(x) { let m = 0; for (const v of x) m = Math.max(m, Math.abs(v)); if (m > 0) for (let i = 0; i < x.length; i++) x[i] /= m; return x; }
+  function buf(chs, sr) { const b = ac.createBuffer(chs.length, chs[0].length, sr || ac.sampleRate); chs.forEach((c, i) => b.copyToChannel(c, i)); return b; }
+  function cached(key, mk) { if (!cache.has(key)) cache.set(key, mk()); return cache.get(key); }
+
+  // sines by rotation and decays by multiplication: ~10x cheaper than Math.sin/exp per sample (a 6 s note in a few ms)
+  function partial(x, sr, f, amp, ph, tau, upto) {
+    const w = 2 * Math.PI * f / sr, cw = Math.cos(w), sw = Math.sin(w), k = Math.exp(-1 / (tau * sr)), n = Math.min(x.length, upto || x.length);
+    let c = Math.cos(ph), sn = Math.sin(ph), e = amp;
+    for (let i = 0; i < n; i++) { x[i] += sn * e; const c2 = c * cw - sn * sw; sn = sn * cw + c * sw; c = c2; e *= k; }
+  }
+  function mallet(f, ring) {       // warm marimba: sine + tuned-bar partials 4x / 10x, felt thock, lowpassed
+    return cached(`m${f.toFixed(2)}r${ring}`, () => {
+      const sr = ac.sampleRate, d1 = ring * 1.5 * (440 / f) ** 0.35, n = Math.floor(Math.min(6, 5 * d1 + 0.6) * sr), x = new Float32Array(n);
+      partial(x, sr, f, 1, 0, d1);
+      partial(x, sr, 4 * f, 0.2, 0.6, 0.11, Math.floor(0.9 * sr));
+      partial(x, sr, 10 * f, 0.045, 1.3, 0.025, Math.floor(0.25 * sr));
+      const ka = Math.exp(-1 / (0.0012 * sr)), kn = Math.exp(-1 / (0.006 * sr)), fade = 0.6 * sr;
+      let ea = 1, en = 0.05;
+      for (let i = 0; i < n; i++) { x[i] *= 1 - ea; ea *= ka; if (en > 1e-5) { x[i] += (Math.random() * 2 - 1) * en; en *= kn; } if (n - i < fade) x[i] *= (n - i) / fade; }
+      lp(x, 2500, sr); lp(x, 2500, sr); hp(x, 40, sr);
+      return buf([norm(x)]);
+    });
+  }
+  function grainB(f, len) {
+    return cached(`g${f.toFixed(2)}l${len}`, () => {
+      const sr = ac.sampleRate, n = Math.floor(len * sr), x = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        x[i] = (Math.sin(2 * Math.PI * f * t) * Math.exp(-t / (len / 4.5)) + 0.12 * Math.sin(8 * Math.PI * f * t) * Math.exp(-t / 0.03)) * (1 - Math.exp(-t / 0.002));
+      }
+      lp(x, 3200, sr);
+      return buf([x]);
+    });
+  }
+  function noiseB(key, len, lo, hi, dec, att) {
+    return cached(key, () => {
+      const sr = ac.sampleRate, n = Math.floor(len * sr), x = new Float32Array(n);
+      for (let i = 0; i < n; i++) x[i] = Math.random() * 2 - 1;
+      hp(x, lo, sr); hp(x, lo, sr); lp(x, hi, sr); lp(x, hi, sr);
+      for (let i = 0; i < n; i++) { const t = i / sr; x[i] *= Math.exp(-t / dec) * (1 - Math.exp(-t / att)); }
+      return buf([norm(x)]);
+    });
+  }
+  function thumpB() {
+    return cached('thump', () => {
+      const sr = ac.sampleRate, n = Math.floor(0.45 * sr), x = new Float32Array(n); let ph = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr; ph += 2 * Math.PI * (46 + 70 * Math.exp(-t / 0.035)) / sr; x[i] = Math.sin(ph) * Math.exp(-t / 0.16) * (1 - Math.exp(-t / 0.002)); }
+      return buf([x]);
+    });
+  }
+  // the pad chords are rendered in their own worker (each takes ~0.3 s of maths: on the page it stuttered the picture)
+  const padReady = new Map(), padAsked = new Set();
+  const padWorker = new Worker(URL.createObjectURL(new Blob([`
+    function lp(x, fc, sr) { const a = 1 - Math.exp(-2 * Math.PI * fc / sr); let y = 0; for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); x[i] = y; } }
+    function hp(x, fc, sr) { const a = Math.exp(-2 * Math.PI * fc / sr); let px = 0, y = 0; for (let i = 0; i < x.length; i++) { y = a * (y + x[i] - px); px = x[i]; x[i] = y; } }
+    onmessage = (e) => {
+      const { nm, freqs, len, sr } = e.data, n = Math.floor(len * sr), L = new Float32Array(n), R = new Float32Array(n);
+      for (const f of freqs) for (let h = 1; h <= 5; h++) {
+        const dep = 8 * (h === 1 ? 0.5 : 1) / 20 * Math.LN10, amp = 1 / h ** 2.3;   // each partial swells +-8 dB on its own slow cycle
+        for (const ch of [L, R]) {
+          const fr = 0.06 + Math.random() * 0.24, p0 = Math.random() * 6.28, q0 = Math.random() * 6.28, w = 2 * Math.PI * f * h / sr, wd = 2 * Math.PI * fr / sr;
+          for (let i = 0; i < n; i++) ch[i] += Math.sin(w * i + q0) * Math.exp(dep * Math.sin(wd * i + p0)) * amp;
+        }
+      }
+      for (const ch of [L, R]) {
+        lp(ch, 1400, sr); lp(ch, 1400, sr); hp(ch, 30, sr);
+        for (let i = 0; i < n; i++) { const t = i / sr; ch[i] *= Math.min(1, t / 0.7) * Math.min(1, (len - t) / 1.0) / freqs.length; }
+      }
+      postMessage({ nm, L, R, sr }, [L.buffer, R.buffer]);
+    };`], { type: 'text/javascript' })));
+  padWorker.onmessage = (e) => { const { nm, L, R, sr } = e.data; padReady.set(nm, buf([L, R], sr)); };
+  function askPad(nm) { if (padAsked.has(nm)) return; padAsked.add(nm); padWorker.postMessage({ nm, freqs: CH[nm].map((m) => jhz(m, nm)), len: PHRASE + 1.2, sr: 16000 }); }
+  function padB(nm) { askPad(nm); return padReady.get(nm) || null; }
+  function subB(nm) {
+    return cached('sub' + nm, () => {
+      const sr = 16000, len = PHRASE + 1.0, n = Math.floor(len * sr), x = new Float32Array(n);
+      const r = ROOT[nm] < 31 ? ROOT[nm] + 12 : ROOT[nm], f = jhz(r, nm);
+      for (let i = 0; i < n; i++) { const t = i / sr; x[i] = (Math.sin(2 * Math.PI * f * t) + 0.25 * Math.sin(4 * Math.PI * f * t + 0.3)) * Math.min(1, t / 0.4) * Math.min(1, (len - t) / 1.0); }
+      return buf([x], sr);
+    });
+  }
+  function irB(secs, pre, lo, hi) {   // a decaying noise impulse response (the video's convolution reverbs)
+    const sr = ac.sampleRate, n = Math.floor((secs + pre) * sr), chs = [];
+    for (let c = 0; c < 2; c++) {
+      const x = new Float32Array(n);
+      for (let i = Math.floor(pre * sr); i < n; i++) { const t = i / sr - pre; x[i] = (Math.random() * 2 - 1) * Math.exp(-t / (secs / 6.9)) * (1 - Math.exp(-t / 0.006)); }
+      hp(x, lo, sr); lp(x, hi, sr);
+      let e = 0; for (const v of x) e += v * v; e = Math.sqrt(e); for (let i = 0; i < n; i++) x[i] /= e;
+      chs.push(x);
+    }
+    return buf(chs);
+  }
+
+  function play(b, t, gain, pan, bus, sendRev, sendHall) {
+    const s = ac.createBufferSource(); s.buffer = b;
+    const g = ac.createGain(); g.gain.value = gain; s.connect(g);
+    let node = g;
+    if (pan != null && pan !== 0.5) { const p = ac.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, (pan - 0.5) * 2)); g.connect(p); node = p; }
+    node.connect(bus);
+    if (sendRev) { const sg = ac.createGain(); sg.gain.value = sendRev; node.connect(sg); sg.connect(revIn); }
+    if (sendHall) { const sg = ac.createGain(); sg.gain.value = sendHall; node.connect(sg); sg.connect(hallIn); }
+    s.start(Math.max(t, ac.currentTime));
+  }
+  const strike = (t, m, amp, pan, ring = 1.0) => play(mallet(jhz(m, chordNow), ring), t, amp, pan, diceG, 0.35, 0.15);
+  const grain = (t, m, amp, pan, len = 0.3, hallS = 0.3) => play(grainB(jhz(m, chordNow), len), t, amp * 1.4, pan, diceG, 0, hallS);
+  const rattle = (t, amp, pan) => play(noiseB('rattle', 0.06, 250, 1600, 0.012, 0.002), t, amp, pan, diceG, 0, 0);
+
+  function start() {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 8; comp.ratio.value = 8; comp.attack.value = 0.004; comp.release.value = 0.25;
+    out = ac.createGain(); out.gain.value = 0.75; out.connect(comp); comp.connect(ac.destination);
+    if (window.__cgTap) window.__cgTap(ac, comp, out);   // test hook (level meters); unused on the site
+    musicG = ac.createGain(); diceG = ac.createGain(); musicG.connect(out); diceG.connect(out);
+    const rev = ac.createConvolver(); rev.normalize = false; rev.buffer = irB(1.8, 0.018, 180, 6500);
+    const hall = ac.createConvolver(); hall.normalize = false; hall.buffer = irB(3.4, 0.025, 140, 5000);
+    revIn = ac.createGain(); hallIn = ac.createGain(); revIn.connect(rev); hallIn.connect(hall);
+    const wet = ac.createGain(); wet.gain.value = 0.4; rev.connect(wet); hall.connect(wet); wet.connect(out);
+    applyVol();
+    askPad(PROG[progName()][0]); for (const k of Object.values(PROG).flat()) askPad(k);   // the first chord renders first (~0.3 s)
+    t0 = ac.currentTime + 0.6; nextChord = t0; nextBeat = t0;
+    setInterval(tick, 50);
+    document.addEventListener('visibilitychange', () => { if (!ac) return; if (document.hidden) ac.suspend(); else if (on) ac.resume(); });
+  }
+  function applyVol() {
+    if (!ac) return;
+    musicG.gain.setTargetAtTime(vol.music ** 1.6 * 0.733, ac.currentTime, 0.05);
+    diceG.gain.setTargetAtTime(vol.dice ** 1.6, ac.currentTime, 0.05);
+  }
+  function progName() { return P.shape === 'tetra' ? 'pyramid' : P.shape === 'ifs' ? 'fern' : P.shape === 'polygon' && P.n === 4 ? 'square' : 'main'; }
+  function tick() {
+    if (!on || !ac || ac.state !== 'running') return;
+    const now = ac.currentTime, ahead = now + 0.3;
+    if (nextChord < now) { nextChord = now + 0.05; nextBeat = nextChord; t0 = nextChord; }   // after a pause: pick up again, no backlog
+    while (nextChord < ahead) {          // a new chord every 2 bars, never the same one twice in a row
+      const prog = PROG[progName()];
+      let nm = prog[progK++ % prog.length];
+      if (nm === lastName) nm = prog[progK++ % prog.length];
+      const first = lastName === '';
+      const pb = padB(nm); if (pb) play(pb, nextChord, (first ? 0.6 : 1) * 0.21, null, musicG, 0, 0.35);
+      play(subB(nm), nextChord, 0.16, null, musicG, 0, 0);
+      const tc = nextChord;
+      if (first) chordNow = nm; else setTimeout(() => { chordNow = nm; }, Math.max(0, (tc - now) * 1000));
+      lastName = nm; nextChord += PHRASE;
+      for (const k of Object.values(PROG).flat()) askPad(k);   // every chord renders in the background once
+    }
+    groove += (grooveWant - groove) * 0.04;
+    while (nextBeat < ahead) {           // soft thump on 1 and 3, a low brushed tick on the offbeats
+      const b = Math.round((nextBeat - t0) / BEAT), pos = ((b % 4) + 4) % 4;
+      if (groove > 0.02) {
+        const sh = noiseB('shaker', 0.1, 300, 1600, 0.03, 0.005);
+        if (pos === 0 || pos === 2) play(thumpB(), nextBeat, 0.55 * 0.8 * groove, null, musicG, 0, 0);
+        play(sh, nextBeat + BEAT / 2, 0.07 * groove, 0.62, musicG, 0, 0);
+        if (pos === 3) play(sh, nextBeat + BEAT * 0.75, 0.032 * groove, 0.38, musicG, 0, 0);
+      }
+      nextBeat += BEAT;
+    }
+  }
+
+  // which note, and where in the stereo field, each corner (or recipe rule) sits
+  function noteOf(c) {
+    if (P.shape === 'ifs') return P.ifsName === 'fern' ? ([48, 67, 64, 69][c] ?? LAD[c % LAD.length]) : LAD[c % LAD.length];
+    const nv = geom.verts.length;
+    const base = P.shape === 'tetra' ? [62, 65, 69, 72] : P.shape === 'polygon' && nv === 3 ? [60, 64, 67] : P.shape === 'polygon' && nv === 4 ? [60, 64, 67, 71] : null;
+    if (c < nv) return base ? base[c] : LAD[c % LAD.length];
+    return LAD[(c - nv) % LAD.length] - 12;
+  }
+  function panOf(c) {
+    if (P.shape === 'ifs') return P.ifsName === 'fern' ? ([0.5, 0.5, 0.18, 0.82][c] ?? 0.5) : (c % 2 ? 0.7 : 0.3);
+    const t = geom.targets[c]; return t ? 0.5 + 0.35 * t[0] : 0.5;
+  }
+  function warm() {   // build this shape's notes a few at a time in idle moments, so steps never wait on synthesis
+    const n = P.shape === 'ifs' ? 4 : Math.min(geom.targets.length, 24), list = [];
+    for (let c = 0; c < n; c++) { const m = noteOf(c); for (const nm of new Set(Object.values(PROG).flat())) list.push([m, nm]); }
+    const go = () => { const t = performance.now(); while (list.length && performance.now() - t < 8) { const [m, nm] = list.pop(); const f = jhz(m, nm); mallet(f, 0.9); grainB(jhz(m + 12, nm), 0.18); grainB(f, 0.34); } if (list.length) setTimeout(go, 30); };
+    setTimeout(go, 400);
+  }
+  const save = () => { try { localStorage.setItem('cg-sound', JSON.stringify({ vol })); } catch (e) { /* private mode */ } };
+
+  return {
+    get on() { return on; },
+    vol,
+    async toggle() {
+      on = !on;
+      if (on && !ac) start(); else if (ac) { if (on) await ac.resume(); else await ac.suspend(); }
+      save();
+      if (on) this.intro();
+      return on;
+    },
+    setVol(k, v) { vol[k] = v; applyVol(); save(); },
+    groove(want) { grooveWant = want ? 1 : 0; },
+    intro() {        // a new shape: its corners introduce themselves, one note each
+      if (!on || !ac) return;
+      warm();
+      const n = Math.min(P.shape === 'ifs' ? (parseIfs(P.ifsText) || []).length : geom.verts.length, 8), t = ac.currentTime + 0.05;
+      for (let i = 0; i < n; i++) strike(t + i * 0.16, noteOf(i), 0.3, panOf(i), 1.3);
+    },
+    finale() {       // all dots in: the corner chord rings
+      if (!on || !ac) return;
+      const n = Math.min(P.shape === 'ifs' ? 4 : geom.verts.length, 6), k = Math.min(n ** 0.25, 1.5) / Math.sqrt(n), t = ac.currentTime + 0.02;
+      for (let i = 0; i < n; i++) strike(t + i * 0.03, noteOf(i), 0.42 * k * 1.4, panOf(i), 2.0);
+    },
+    // dots a..b-1 just landed (over dt seconds): play the real rolls, thinned to what an ear can follow
+    dots(a, b, dt, stepping) {
+      if (!on || !ac || b <= a) return;
+      const now = ac.currentTime, rate = (b - a) / Math.max(dt, 1 / 120);
+      if (stepping || rate <= 5) {       // walked rolls: blocked rolls rattle, the corner's note as the die lands, a tick as the dot lands
+        const k0 = Math.max(a, b - 3);
+        for (let i = k0; i < b; i++) {
+          const t = now + 0.02 + (i - k0) * Math.min(0.2, dt / (b - k0));
+          if (i === 0) { grain(t, 72, 0.06, 0.5, 0.25); continue; }
+          const c = cpuIdx[2 * i], rej = P.shape !== 'ifs' ? (stepLog[i] || []) : [];
+          rej.forEach((r, j) => rattle(t + 0.07 * j, 0.25, panOf(r)));
+          const td = t + rej.length * 0.07;
+          strike(td, noteOf(c), 0.42, panOf(c), 0.9);
+          grain(td + 0.14, noteOf(c) + 12, 0.05, panOf(c), 0.18);
+        }
+        return;
+      }
+      budget += dt * Math.min(16, rate);
+      const k = Math.floor(budget); budget -= k;
+      if (k <= 0) return;
+      const amp = 0.75 * 0.09 / Math.max(1, rate / 40) ** 0.12, smear = rate > 3000;
+      for (let j = 0; j < k; j++) {
+        const i = Math.min(b - 1, a + Math.floor((j + Math.random()) / k * (b - a))), c = cpuIdx[2 * i];
+        if (c === 255) continue;
+        const oc = rate > 300 && Math.random() < 0.3 ? 12 : 0, t = now + 0.02 + j / k * dt;
+        if (smear) grain(t, noteOf(c) + oc, amp * 0.8, panOf(c), 0.5, 1.1);
+        else grain(t, noteOf(c) + oc, amp, panOf(c), oc ? 0.22 : 0.34);
+      }
+    },
+    back(i) {
+      if (!on || !ac || i < 1) return;
+      const c = cpuIdx[2 * (i - 1)]; if (c !== 255) grain(ac.currentTime + 0.01, noteOf(c), 0.05, panOf(c), 0.2);
+    },
+    scrub(a, b) {    // dragging the timeline: a soft grain of the newest dot, at most ~20 a second
+      if (!on || !ac) return;
+      const now = performance.now(); if (now - lastScrub < 50) return; lastScrub = now;
+      const i = Math.max(1, Math.min(b, generated) - 1), c = cpuIdx[2 * i];
+      if (c !== 255) grain(ac.currentTime + 0.01, noteOf(c), 0.06, panOf(c), 0.25);
+    },
+  };
+})();
+
 // ---------------- loop ----------------
 let last = performance.now(), frames = 0, fpsT = last, fps = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (playing) {
-    const sp = +$('speed').value;
+    const sp = +$('speed').value, a = Math.floor(S);
     playS += dt * sp * Math.max(2, playS * Math.LN10 * 0.45);
-    if (playS >= P.max) { playS = P.max; playing = false; saveHash(); }
+    let ended = false;
+    if (playS >= P.max) { playS = P.max; playing = false; ended = true; saveHash(); }
     if (Math.floor(playS) !== Math.floor(S)) dirty = true;
     S = playS;
+    SND.dots(Math.min(a, generated), Math.min(Math.floor(S), generated), dt, false);
+    if (ended) SND.finale();
   }
+  SND.groove(playing && S > 40);
   if (geom.is3d && P.spin && !dragging && (!playing || S > 400)) { cam.yaw += dt * 0.22; dirty = true; }
   if (dirty) { dirty = false; render(); frames++; }
   readouts();
@@ -855,6 +1141,10 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 buildPresets();
+$('volMusic').value = SND.vol.music; $('volDice').value = SND.vol.dice;
+$('volMusic').oninput = (e) => SND.setVol('music', +e.target.value);
+$('volDice').oninput = (e) => SND.setVol('dice', +e.target.value);
+$('sound').onclick = async () => { const on = await SND.toggle(); $('sound').textContent = on ? '♪ Sound on (click to mute)' : '♪ Turn sound on'; $('sound').classList.toggle('on', on); };
 window.addEventListener('resize', () => { dirty = true; });
 resize();
 if (!location.hash || !loadHash()) applyPreset(0);
