@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chaos Game in 4D: the Pentatope and the Tesseract</title>
+<style>
+  :root { --bg:#04050b; --panel:#0b0e1a; --line:#1d2340; --text:#dfe4ff; --dim:#8a93bd; --gold:#ffc145; --acc:#2ee6a8; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, "Segoe UI", sans-serif; overflow:hidden; }
+  #app { display:flex; height:100%; }
+  #panel { width:340px; flex:none; height:100%; overflow-y:auto; background:var(--panel); border-right:1px solid var(--line); padding:14px 16px 24px; }
+  #stage { position:relative; flex:1; min-width:0; }
+  #gl, #ov { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #gl { cursor:grab; touch-action:none; }
+  #gl:active { cursor:grabbing; }
+  #ov { pointer-events:none; }
+  h1 { font-size:20px; margin:0 0 4px; letter-spacing:.3px; }
+  h1 span { color:var(--gold); }
+  .sub { color:var(--dim); margin:0 0 6px; font-size:13px; }
+  a { color:var(--acc); }
+  section { border-top:1px solid var(--line); padding:10px 0 8px; }
+  section > .t { font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--dim); margin-bottom:6px; }
+  .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .row > label { flex:none; width:92px; color:var(--dim); font-size:13px; }
+  .row > input[type=range] { flex:1; min-width:0; }
+  .val { width:54px; text-align:right; font-variant-numeric:tabular-nums; font-size:13px; }
+  select, button, textarea { font:inherit; color:var(--text); background:#141936; border:1px solid #2a3260; border-radius:6px; }
+  select { padding:5px 6px; width:100%; }
+  button { padding:5px 10px; cursor:pointer; }
+  button:hover { border-color:#4a56a0; }
+  button.on { background:#3a2440; border-color:#ff4f6a; color:#ffd5dc; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+  .chips button { font-size:12px; padding:3px 8px; }
+  .checks { display:flex; flex-wrap:wrap; gap:4px 14px; margin:6px 0; font-size:13px; color:var(--dim); }
+  .checks label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .transport { display:flex; gap:6px; margin:6px 0; }
+  .transport button { flex:1; font-size:15px; padding:4px 0; }
+  #play { flex:1.6; }
+  #dotsVal { font-size:22px; font-variant-numeric:tabular-nums; color:var(--gold); }
+  #stepInfo { font-size:13px; color:#cfd6ff; background:#10142a; border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin-top:6px; min-height:20px; }
+  #stepInfo .no { color:#ff8a9a; text-decoration:line-through; }
+  #stepInfo .ok { color:var(--acc); }
+  textarea { width:100%; height:96px; padding:6px; font:12px/1.35 ui-monospace, Consolas, monospace; resize:vertical; }
+  .btns { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  #status { color:var(--dim); font-size:12px; margin-top:10px; font-variant-numeric:tabular-nums; }
+  .hint { color:var(--dim); font-size:12px; margin-top:4px; }
+  #hud { position:absolute; left:14px; bottom:12px; color:#9aa3cc; font-size:12px; pointer-events:none; text-shadow:0 1px 3px #000; }
+  #err { position:absolute; inset:0; display:none; align-items:center; justify-content:center; text-align:center; padding:40px; color:#ffb3bf; }
+  .hide { display:none !important; }
+  #about p { margin:0 0 7px; font-size:13px; color:#c3cbef; }
+  #about b { color:var(--gold); font-weight:600; }
+  .row > button { flex:1; font-size:12px; padding:4px 6px; }
+  @media (max-width: 760px) {
+    #app { flex-direction:column-reverse; }
+    #panel { width:100%; height:46%; border-right:0; border-top:1px solid var(--line); }
+    #stage { flex:1; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>Chaos Game <span>in 4D</span></h1>
+    <p class="sub">The same dice game, played with corners in four dimensions. You see its 3D shadow: turn it in 4D and the shadow turns inside out.
+      <a href="index.html">2D + 3D explorer</a> · <a href="https://youtu.be/3bIOdZJoVr0" target="_blank" rel="noopener">Watch the video</a></p>
+
+    <section>
+      <div class="t">Start from</div>
+      <select id="preset"></select>
+    </section>
+
+    <section>
+      <div class="t">What you're seeing</div>
+      <div id="about"></div>
+    </section>
+
+    <section>
+      <div class="t">4D shape</div>
+      <select id="shape">
+        <option value="penta">Pentatope (5 corners: the 4D pyramid)</option>
+        <option value="tess">Tesseract (16 corners: the 4D cube)</option>
+        <option value="cell16">16-cell (8 corners: the 4D octahedron)</option>
+      </select>
+      <div class="checks" id="rowExtras">
+        <label title="the middle of every edge"><input type="checkbox" id="mid"> + edge middles</label>
+        <label title="the centre of every flat face"><input type="checkbox" id="faces"> + face centres</label>
+        <label title="the centre of every 3D cell (the sides of a 4D shape are solids)"><input type="checkbox" id="cells"> + cell centres</label>
+        <label><input type="checkbox" id="center"> + centre</label>
+      </div>
+      <div class="hint" id="targetsInfo"></div>
+    </section>
+
+    <section id="secJump">
+      <div class="t">The jump</div>
+      <div class="row"><label>Jump toward</label><input type="range" id="jump" min="0.05" max="0.95" step="0.001"><span class="val" id="jumpVal"></span></div>
+      <div class="row"><label></label><button id="half">halfway</button><button id="twoThirds">2/3</button><button id="touch" title="The jump where the copies of the shape just touch">touch</button></div>
+    </section>
+
+    <section id="secRule">
+      <div class="t">Rule: never pick the corner that is...</div>
+      <div class="chips" id="chips"></div>
+      <div class="row"><label>...compared with</label>
+        <select id="memory"><option value="1">the last pick</option><option value="2">the pick before last</option></select></div>
+      <div class="hint">No rule = pure chance. Click a chip to forbid that kind of jump.</div>
+    </section>
+
+    <section>
+      <div class="t">Turn it in 4D</div>
+      <div class="row"><label title="turns the X direction into the 4th direction">X ↔ W</label><input type="range" id="rxw" min="-180" max="180" step="0.5"><span class="val" id="rxwVal"></span></div>
+      <div class="row"><label title="turns the Y direction into the 4th direction">Y ↔ W</label><input type="range" id="ryw" min="-180" max="180" step="0.5"><span class="val" id="rywVal"></span></div>
+      <div class="row"><label title="turns the Z direction into the 4th direction">Z ↔ W</label><input type="range" id="rzw" min="-180" max="180" step="0.5"><span class="val" id="rzwVal"></span></div>
+      <div class="row"><button id="auto" style="flex:1">⟳ Turning in 4D</button><select id="aspeed" style="width:86px"><option value="0.4">slow</option><option value="1">normal</option><option value="2.5">fast</option></select></div>
+      <div class="row"><label>Shadow</label>
+        <select id="proj"><option value="persp" title="the part nearer the 4D camera looks bigger">perspective</option><option value="ortho" title="straight down the 4th axis: W is simply dropped">flat</option></select></div>
+      <div class="row" id="rowD"><label>4D camera</label><input type="range" id="D" min="1.3" max="8" step="0.05"><span class="val" id="DVal"></span></div>
+      <div class="row"><label></label><button id="reset4" style="flex:1">Back to the start pose</button></div>
+      <div class="hint">W is the 4th direction. Ctrl-drag the picture to turn it in 4D by hand.</div>
+    </section>
+
+    <section>
+      <div class="t">Dots</div>
+      <div id="dotsVal">0</div>
+      <input type="range" id="dots" min="0" max="1000" step="1" style="width:100%">
+      <div class="transport">
+        <button id="b0" title="Back to the start (Home)">⏮</button>
+        <button id="bm" title="One dot back (←, Shift = 10)">◀</button>
+        <button id="play" title="Play / pause (Space)">▶</button>
+        <button id="bp" title="One dot forward (→, Shift = 10)">▶|</button>
+        <button id="b1" title="All dots (End)">⏭</button>
+      </div>
+      <div class="row"><label>Most dots</label>
+        <select id="max"><option value="300000">300,000</option><option value="1000000">1 million</option><option value="2000000">2 million</option><option value="4000000">4 million</option><option value="8000000">8 million</option></select></div>
+      <div class="row"><label>Play speed</label>
+        <select id="speed"><option value="0.25">slow</option><option value="1" selected>normal</option><option value="4">fast</option></select></div>
+      <div id="stepInfo"></div>
+    </section>
+
+    <section>
+      <div class="t">Sound</div>
+      <button id="sound" style="width:100%">♪ Turn sound on</button>
+      <div class="hint">Every corner is a note, like in the video: you hear the dice.</div>
+      <div class="row"><label>Music</label><input type="range" id="volMusic" min="0" max="1" step="0.01"></div>
+      <div class="row"><label>Dice notes</label><input type="range" id="volDice" min="0" max="1" step="0.01"></div>
+    </section>
+
+    <section>
+      <div class="t">Look</div>
+      <div class="row"><label>Colour</label>
+        <select id="color"><option value="corner">by corner (like the video)</option><option value="pure">by corner, pure</option><option value="w">by 4D depth (near / far)</option><option value="age">by when it landed</option><option value="gold">gold</option></select></div>
+      <div class="row"><label>3D look</label>
+        <select id="look3"><option value="glow">glow (see-through)</option><option value="solid">solid (near dots hide far ones)</option></select></div>
+      <div class="row"><label>Brightness</label><input type="range" id="exposure" min="-4" max="4" step="0.1"><span class="val" id="expVal"></span></div>
+      <div class="checks">
+        <label><input type="checkbox" id="outline"> 4D corners + edges</label>
+        <label><input type="checkbox" id="spin"> turn slowly in 3D</label>
+      </div>
+    </section>
+
+    <section>
+      <div class="btns">
+        <button id="reroll" title="Same rules, new dice rolls">New dice rolls</button>
+        <button id="resetView" title="Also: double-click the picture">Reset view</button>
+        <button id="savePng">Save picture</button>
+        <button id="copyLink">Copy link</button>
+      </div>
+      <div class="hint">Drag to turn in 3D (right-drag: move, Ctrl-drag: turn in 4D). Wheel or pinch to zoom. Double-click to reset.</div>
+      <div id="status"></div>
+    </section>
+  </aside>
+  <main id="stage">
+    <canvas id="gl"></canvas>
+    <canvas id="ov"></canvas>
+    <div id="hud"></div>
+    <div id="err"></div>
+  </main>
+</div>
+
+<script type="text/plain" id="worker-src">
+'use strict';
+// The chaos game in 4D, one true chain of rolls: dot k = dot k-1 jumped toward the k-th pick. Every dot keeps all
+// four coordinates; turning in 4D is done per frame on the GPU, so the dice never have to be rolled again.
+// Seeded, so the same settings always give the same dots: more dots only ever appends.
+const LOGN = 2000;               // remember the re-rolled (forbidden) picks of the first dots, for step mode
+let G = null;
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s + 0x6D2B79F5) | 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+onmessage = (e) => {
+  const m = e.data;
+  if (m.type === 'start') G = init(m);
+  if (!G || G.gen !== m.gen) return;
+  run(m.count);
+};
+function init(m) {
+  const P = m.p, rnd = rng(m.seed), T = P.targets;
+  const g = { gen: m.gen, P, rnd, done: 0, p: [0, 0, 0, 0], prev: -1, prev2: -1, log: {} };
+  // start anywhere inside the shape: a random mix of its corners
+  let tot = 0; const wts = [];
+  for (let i = 0; i < P.nt; i++) { const w = rnd(); wts.push(w); tot += w; }
+  for (let i = 0; i < P.nt; i++) for (let a = 0; a < 4; a++) g.p[a] += T[4 * i + a] * wts[i] / tot;
+  return g;
+}
+function run(count) {
+  const g = G, P = g.P, rnd = g.rnd, base = g.done;
+  const pos = new Float32Array(count * 4), idx = new Uint8Array(count * 2);
+  let x = g.p[0], y = g.p[1], z = g.p[2], w = g.p[3], i = 0;
+  if (base === 0) { pos[0] = x; pos[1] = y; pos[2] = z; pos[3] = w; idx[0] = 255; idx[1] = 255; i = 1; }
+  const T = P.targets, nt = P.nt, s = 1 - P.jump, F = P.forbid, mem2 = P.memory === 2;
+  let prev = g.prev, prev2 = g.prev2;
+  for (; i < count; i++) {
+    const gi = base + i, ref = mem2 ? prev2 : prev;
+    let t = (rnd() * nt) | 0;
+    if (F && ref >= 0 && F[ref * nt + t]) {
+      const rej = gi < LOGN ? [t] : null; let tries = 0;
+      do { t = (rnd() * nt) | 0; if (!F[ref * nt + t]) break; if (rej) rej.push(t); } while (++tries < 500);
+      if (rej) g.log[gi] = rej;
+    }
+    const o = 4 * t, tx = T[o], ty = T[o + 1], tz = T[o + 2], tw = T[o + 3];
+    x = tx + s * (x - tx); y = ty + s * (y - ty); z = tz + s * (z - tz); w = tw + s * (w - tw);
+    const q = 4 * i; pos[q] = x; pos[q + 1] = y; pos[q + 2] = z; pos[q + 3] = w;
+    idx[2 * i] = t; idx[2 * i + 1] = prev < 0 ? t : prev;
+    prev2 = prev; prev = t;
+  }
+  g.prev = prev; g.prev2 = prev2;
+  g.p = [x, y, z, w]; g.done = base + count;
+  postMessage({ gen: g.gen, offset: base, n: count, pos, idx, log: base < LOGN ? g.log : null }, [pos.buffer, idx.buffer]);
+}
+</script>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+const TAU = Math.PI * 2, FOV = 35 * Math.PI / 180, LOGN = 2000;
+const hex = (h) => [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255];
+// the explorer's palette: the pyramid's four corner colours (the video's), a violet 5th corner for the pentatope, then more neon
+const PENTA = ['FF4F6A', 'FFC145', '2EE6A8', '3A7BFF', '9B6CFF'].map(hex);
+const NEON = ['FF4F6A', '2EE6A8', '3A8BFF', 'FFC145', '9B6CFF', 'FF8A3A', '2EE6E6', 'FF5AD2', '8CF05A', '5A6BFF', 'FFE45A', 'FF7A9B'].map(hex);
+function hsl(h) { const f = (n) => { const k = (n + h * 12) % 12; return 0.5 - 0.5 * Math.max(-1, Math.min(k - 3, 9 - k, 1)); }; return [f(0), f(8), f(4)]; }
+const neon = (i) => i < NEON.length ? NEON[i] : hsl((i * 0.618034) % 1).map((c) => c * 0.8 + 0.2);
+
+// ---------------- 4D shapes: every corner 1 from the centre ----------------
+const sub = (a, b) => a.map((c, k) => c - b[k]), dot = (a, b) => a.reduce((s, c, k) => s + c * b[k], 0);
+const len = (a) => Math.sqrt(dot(a, a)), unit = (a) => { const l = len(a); return a.map((c) => c / l); };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const SHAPES = {
+  // the 3D explorer's pyramid (corner on top) at w = -1/4, the 5th corner straight "above" it in the 4th direction at w = 1:
+  // then all 10 pairs are the same distance apart (sqrt(5/2)), and every corner is 1 from the centre
+  penta: () => { const rb = Math.sqrt(15) / 4, r = Math.sqrt(8 / 9);
+    const base = [[0, 1, 0], ...[0, 1, 2].map((i) => { const a = Math.PI / 2 + TAU * i / 3; return [r * Math.cos(a), -1 / 3, r * Math.sin(a)]; })];
+    return [...base.map((v) => [...v.map((c) => c * rb), -0.25]), [0, 0, 0, 1]]; },
+  tess: () => Array.from({ length: 16 }, (_, i) => [0, 1, 2, 3].map((b) => (i >> b & 1 ? 0.5 : -0.5))),
+  cell16: () => { const v = []; for (let a = 0; a < 4; a++) for (const s of [1, -1]) { const p = [0, 0, 0, 0]; p[a] = s; v.push(p); } return v; },
+};
+const NAMES = { penta: 'pentatope', tess: 'tesseract', cell16: '16-cell' };
+function edgesOf(V) {
+  let m = Infinity; for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++) m = Math.min(m, len(sub(V[i], V[j])));
+  const E = []; for (let i = 0; i < V.length; i++) for (let j = i + 1; j < V.length; j++) if (len(sub(V[i], V[j])) < m * 1.001) E.push([i, j]);
+  return E;
+}
+function faceCentres(shape, V, k) {     // the centres of the k-dimensional faces: 1 = edges, 2 = flat faces, 3 = cells
+  const out = [];
+  if (shape === 'tess') {               // the points of {-1/2, 0, 1/2}^4 with exactly k zeros
+    for (let i = 0; i < 81; i++) { const p = [0, 1, 2, 3].map((a) => [-0.5, 0, 0.5][Math.floor(i / 3 ** a) % 3]); if (p.filter((c) => c === 0).length === k) out.push(p); }
+    return out;
+  }
+  // pentatope and 16-cell: a k-face is any k+1 corners that are all joined to each other
+  const E = new Set(edgesOf(V).map(([a, b]) => a * 64 + b));
+  const rec = (start, pick) => {
+    if (pick.length === k + 1) { out.push([0, 1, 2, 3].map((a) => pick.reduce((s, i) => s + V[i][a], 0) / pick.length)); return; }
+    for (let i = start; i < V.length; i++) if (pick.every((j) => E.has(j * 64 + i))) rec(i + 1, [...pick, i]);
+  };
+  rec(0, []); return out;
+}
+function geometry(P) {
+  const verts = SHAPES[P.shape](), edges = edgesOf(verts), targets = verts.slice(), kinds = verts.map(() => 0);
+  for (const [k, on] of [[1, P.mid], [2, P.faces], [3, P.cells]]) if (on) for (const c of faceCentres(P.shape, verts, k)) { targets.push(c); kinds.push(k); }
+  if (P.center) { targets.push([0, 0, 0, 0]); kinds.push(4); }
+  // distance classes between picks: same, nearest, ..., farthest (the rule chips)
+  const nt = targets.length, D = new Float64Array(nt * nt), dists = [0];
+  for (let i = 0; i < nt; i++) for (let j = 0; j < nt; j++) {
+    const d = i === j ? 0 : len(sub(targets[i], targets[j])); D[i * nt + j] = d;
+    if (d > 1e-9 && !dists.some((q) => Math.abs(q - d) < 1e-4)) dists.push(d);
+  }
+  dists.sort((a, b) => a - b);
+  const cls = new Int32Array(nt * nt);
+  for (let k = 0; k < nt * nt; k++) cls[k] = dists.findIndex((q) => Math.abs(q - D[k]) < 1e-4);
+  const nd = dists.length;
+  let labels = dists.map((d, k) => chipLabel(k, nd)), tips = dists.map((d, k) => k === 0 ? 'the same corner as before' : `corners ${d.toFixed(3)} apart`);
+  if (nt === verts.length && P.shape === 'tess') {       // bare tesseract: distance = how many of the 4 directions differ
+    labels = ['the same', 'a neighbour', '2 steps away', '3 steps away', 'the opposite'];
+    tips = ['the same corner as before', 'differs in 1 of the 4 directions (joined by an edge)', 'differs in 2 directions (across a square face)', 'differs in 3 directions (across a cube cell)', 'differs in all 4 directions'];
+  } else if (nt === verts.length && P.shape === 'penta') { labels = ['the same', 'any other']; tips = ['the same corner as before', 'every other corner: they are all the same distance apart']; }
+  else if (nt === verts.length && P.shape === 'cell16') { labels = ['the same', 'a neighbour', 'the opposite']; }
+  return { verts, edges, targets, kinds, dists, cls, nCls: nd, labels, tips };
+}
+function chipLabel(k, n) {
+  if (k === 0) return 'the same';
+  if (k === n - 1 && n > 2) return 'the farthest';
+  if (k === 1) return 'the nearest';
+  return `${k}${k === 2 ? 'nd' : k === 3 ? 'rd' : 'th'} nearest`;
+}
+const extras = (P) => P.mid || P.faces || P.cells || P.center;
+function touchJump(P) {          // the jump at which the copies just touch (null = no simple answer)
+  if (!extras(P)) return 0.5;    // pentatope + 16-cell: half-size copies meet; tesseract: they fill it exactly
+  if (P.shape === 'tess') return 2 / 3;   // corners, edge middles, face/cell centres, centre: 1/3-size cubes on a 3x3x3x3 grid
+  return null;
+}
+function forbidMatrix() {
+  const nt = geom.targets.length;
+  if (!P.forbid.some(Boolean)) return null;
+  const F = new Uint8Array(nt * nt); for (let k = 0; k < nt * nt; k++) F[k] = P.forbid[geom.cls[k]] ? 1 : 0;
+  return F;
+}
+// how fast the number of allowed roll sequences grows per roll (= the number of copies the rule leaves, on average)
+const growthMemo = new Map();
+function growth(nt, F, mem) {
+  if (!F) return nt;
+  const key = `${nt}|${mem}|${F.join('')}`;
+  if (!growthMemo.has(key)) growthMemo.set(key, growthOf(nt, F, mem));
+  return growthMemo.get(key);
+}
+function growthOf(nt, F, mem) {
+  const ok = (a, b) => !F[a * nt + b];
+  const S = mem === 2 ? nt * nt : nt;
+  if (S * nt > 2e5) return null;
+  let v = new Float64Array(S).fill(1), lg = [];
+  for (let it = 0; it < 160; it++) {
+    const w = new Float64Array(S);
+    if (mem === 2) { for (let a = 0; a < nt; a++) for (let b = 0; b < nt; b++) { const c0 = v[a * nt + b]; if (c0) for (let c = 0; c < nt; c++) if (ok(a, c)) w[b * nt + c] += c0; } }
+    else for (let a = 0; a < nt; a++) { const c0 = v[a]; if (c0) for (let b = 0; b < nt; b++) if (ok(a, b)) w[b] += c0; }
+    let s0 = 0, s1 = 0; for (let k = 0; k < S; k++) { s0 += v[k]; s1 += w[k]; }
+    if (s1 === 0) return 0;
+    lg.push(Math.log(s1 / s0)); for (let k = 0; k < S; k++) w[k] /= s1; v = w;
+  }
+  const n = lg.length; return Math.exp((lg[n - 1] + lg[n - 2]) / 2);   // two steps: some rules alternate (odd/even corners)
+}
+function dimension() {
+  const tj = touchJump(P);
+  if (tj == null || P.jump < tj - 1e-6) return null;      // overlapping copies: no simple answer
+  const g = growth(geom.targets.length, forbidMatrix(), P.memory);
+  if (g == null) return null;
+  return g <= 1 ? 0 : Math.min(4, Math.log(g) / Math.log(1 / (1 - P.jump)));
+}
+
+// ---------------- presets ----------------
+const PRESETS = [
+  ['The pentatope (5 corners)', 'Sierpinski pentatope: the 4D Sierpinski triangle', {}],
+  ['The pentatope (5 corners)', 'Pentatope: never the same corner twice', { rule: [0] }],
+  ['The pentatope (5 corners)', 'Pentatope: never the corner from two rolls ago', { rule: [0], memory: 2 }],
+  ['The tesseract (16 corners)', 'Tesseract, jump halfway: just fog', { shape: 'tess' }],
+  ['The tesseract (16 corners)', '4D Cantor dust (jump 2/3)', { shape: 'tess', jump: 2 / 3, rot: [0, 0, 0] }],
+  ['The tesseract (16 corners)', '4D Menger sponge (+ edge middles, jump 2/3)', { shape: 'tess', mid: true, jump: 2 / 3, max: 4e6, proj: 'ortho', rot: [0, 0, 0], look3: 'solid', color: 'gold' }],
+  ['The tesseract (16 corners)', '4D Vicsek cross (+ centre, jump 2/3)', { shape: 'tess', center: true, jump: 2 / 3 }],
+  ['Tesseract rules (jump halfway)', 'Never the same corner twice', { shape: 'tess', rule: [0] }],
+  ['Tesseract rules (jump halfway)', 'Never a neighbouring corner', { shape: 'tess', rule: [1] }],
+  ['Tesseract rules (jump halfway)', 'Never a corner 2 steps away', { shape: 'tess', rule: [2] }],
+  ['Tesseract rules (jump halfway)', 'Never the opposite corner', { shape: 'tess', rule: [4] }],
+  ['Tesseract rules (jump halfway)', 'Never the same corner or a neighbour', { shape: 'tess', rule: [0, 1] }],
+  ['Tesseract rules (jump halfway)', 'Only ever a neighbouring corner', { shape: 'tess', rule: [0, 2, 3, 4] }],
+  ['More 4D', 'Sierpinski 16-cell (the 4D octahedron)', { shape: 'cell16' }],
+];
+const DEF = { shape: 'penta', mid: false, faces: false, cells: false, center: false, jump: 0.5, forbid: [], memory: 1,
+  color: 'corner', look3: 'glow', exposure: 0, max: 2e6, seed: 1, outline: true, spin: false,
+  rot: [24, 0, 14], auto: true, aspeed: 1, proj: 'persp', D: 2.6 };
+const VIEWKEYS = ['outline', 'spin', 'auto', 'aspeed', 'exposure'];   // kept when a preset is picked (the rest come from the preset)
+
+// ---------------- state ----------------
+let P = { ...DEF, rot: DEF.rot.slice() }, geom = geometry(P), S = 0;
+let gen = 0, generated = 0, stepLog = {}, busy = false, genStart = 0;
+let cap = 0, cpuIdx = null; const cpuPos = new Float32Array(LOGN * 4);
+let playing = false, playS = 0, dirty = true;
+let moving = false, drawCap = Infinity, emaDt = 1 / 60, lastAdapt = 0, lastSd = 0;
+const cam = { R: 1, yaw: 0.65, pitch: 0.32, dist: 4, c: [0, 0, 0] };
+
+// ---------------- WebGL ----------------
+const glc = $('gl'), ov = $('ov'), ctx = ov.getContext('2d');
+const gl = glc.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true, alpha: false });
+if (!gl) { $('err').style.display = 'flex'; $('err').textContent = 'This page needs WebGL2 (any recent Chrome, Edge, Firefox or Safari).'; return; }
+const floatOK = !!gl.getExtension('EXT_color_buffer_float');
+const blend32 = floatOK && !!gl.getExtension('EXT_float_blend');
+function prog(vs, fs) {
+  const p = gl.createProgram();
+  for (const [t, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(p, i); u[a.name] = gl.getUniformLocation(p, a.name); }
+  return { p, u };
+}
+// every dot keeps its 4D spot: turn it in 4D (uR4), cast its 3D shadow (uProj), then the usual 3D camera (uMVP)
+const ptProg = prog(`#version 300 es
+layout(location=0) in vec4 aPos;
+layout(location=1) in uvec2 aIdx;
+uniform mat4 uR4; uniform vec3 uProj; uniform mat4 uMVP; uniform float uSize; uniform int uMode; uniform float uN;
+uniform vec3 uDepth; uniform sampler2D uPal;
+out vec3 vCol;
+vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
+void main() {
+  vec4 p = uR4 * aPos;
+  float s = uProj.x > 0.5 ? uProj.y / (uProj.y - p.w) * uProj.z : 1.0;   // perspective from a camera out along +W
+  gl_Position = uMVP * vec4(p.xyz * s, 1.0);
+  gl_PointSize = uSize;
+  vec3 c;
+  if (aIdx.x == 255u) c = vec3(1.0);
+  else {
+    vec3 A = texelFetch(uPal, ivec2(int(aIdx.x), 0), 0).rgb;
+    if (uMode == 0 && gl_VertexID >= 64) c = mix(A, texelFetch(uPal, ivec2(int(aIdx.y), 0), 0).rgb, 0.28);
+    else if (uMode <= 1) c = A;
+    else if (uMode == 2) {               // 4D depth: far side (w = -1) blue, middle violet, near side (w = +1) coral
+      float t = clamp(p.w * 0.5 + 0.5, 0.0, 1.0);
+      c = t < 0.5 ? mix(vec3(0.16, 0.45, 1.0), vec3(0.66, 0.34, 1.0), t * 2.0) : mix(vec3(0.66, 0.34, 1.0), vec3(1.0, 0.45, 0.28), t * 2.0 - 1.0);
+    }
+    else if (uMode == 3) c = hue(0.85 * float(gl_VertexID) / max(uN, 1.0)) * 0.85 + 0.15;
+    else c = vec3(1.0, 0.76, 0.27);
+  }
+  float dn = clamp((gl_Position.w - uDepth.y) / (uDepth.z - uDepth.y), 0.0, 1.0);
+  if (uDepth.x > 1.5) c *= mix(1.25, 0.16, pow(dn, 0.8));
+  else c *= mix(1.35, 0.5, dn);
+  vCol = c;
+}`, `#version 300 es
+precision highp float;
+in vec3 vCol; uniform float uSize; out vec4 o;
+void main() {
+  float a = 1.0;
+  if (uSize > 2.5) { vec2 d = gl_PointCoord * 2.0 - 1.0; float r = dot(d, d); if (r > 1.0) discard; a = 1.0 - smoothstep(0.55, 1.0, r); }
+  o = vec4(vCol * a, 1.0);
+}`);
+const toneProg = prog(`#version 300 es
+void main() { vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`, `#version 300 es
+precision highp float;
+uniform sampler2D uAcc; uniform float uExp; uniform int uSolid; out vec4 o;
+void main() {
+  vec4 a4 = texelFetch(uAcc, ivec2(gl_FragCoord.xy), 0); vec3 a = a4.rgb;
+  if (uSolid == 1) { vec3 bg = vec3(0.016, 0.02, 0.043); o = vec4(a4.a > 0.5 ? min(a * uExp, vec3(1.0)) : bg, 1.0); return; }
+  // tone-map the brightness, keep the hue: dense spots glow in their own colour instead of going white
+  float m = max(max(a.r, a.g), max(a.b, 1e-6));
+  float v = 1.0 - exp(-m * uExp);
+  vec3 c = a / m * pow(v, 0.85);
+  c += vec3(pow(max(0.0, m * uExp - 2.0) / (m * uExp + 6.0), 1.5)) * 0.35;   // a little white only in the hottest spots
+  vec3 bg = vec3(0.016, 0.02, 0.043);
+  o = vec4(bg + c * (1.0 - bg), 1.0);
+}`);
+const vao = gl.createVertexArray(), posBuf = gl.createBuffer(), idxBuf = gl.createBuffer();
+gl.bindVertexArray(vao);
+gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+gl.bindBuffer(gl.ARRAY_BUFFER, idxBuf); gl.enableVertexAttribArray(1); gl.vertexAttribIPointer(1, 2, gl.UNSIGNED_BYTE, 0, 0);
+gl.bindVertexArray(null);
+const emptyVao = gl.createVertexArray();
+const palTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, palTex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+let accTex = null, fbo = gl.createFramebuffer(), fbW = 0, fbH = 0, depthRb = gl.createRenderbuffer();
+function ensureFbo(w, h) {
+  if (w === fbW && h === fbH) return;
+  fbW = w; fbH = h;
+  if (accTex) gl.deleteTexture(accTex);
+  accTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, accTex);
+  const fmt = blend32 ? gl.RGBA32F : floatOK ? gl.RGBA16F : gl.RGBA8;
+  gl.texStorage2D(gl.TEXTURE_2D, 1, fmt, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.bindRenderbuffer(gl.RENDERBUFFER, depthRb); gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, accTex, 0);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRb);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+}
+let palCss = [];
+function palette() {   // row 0: each pick's colour; 255 = the start dot
+  const d = new Uint8Array(256 * 2 * 4), put = (i, row, c) => { const o = (row * 256 + i) * 4; d[o] = c[0] * 255; d[o + 1] = c[1] * 255; d[o + 2] = c[2] * 255; d[o + 3] = 255; };
+  const nv = geom.verts.length, A = (i) => P.shape === 'penta' && i < nv ? PENTA[i] : neon(i);
+  for (let i = 0; i < 255; i++) { put(i, 0, A(i)); put(i, 1, A(i)); }
+  put(255, 0, [1, 1, 1]); put(255, 1, [1, 1, 1]);
+  gl.bindTexture(gl.TEXTURE_2D, palTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
+  palCss = Array.from({ length: Math.max(geom.targets.length, 5) }, (_, i) => `rgb(${A(i).map((c) => Math.round(c * 255)).join(',')})`);
+}
+
+// ---------------- matrices ----------------
+function mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
+function persp(fy, asp, n, f) { const t = 1 / Math.tan(fy / 2); return new Float32Array([t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]); }
+function lookAt(e, c, up) {
+  const z = unit(sub(e, c)), x = unit(cross(up, z)), y = cross(z, x);
+  return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1]);
+}
+function eye() { const cp = Math.cos(cam.pitch); return [cam.c[0] + cam.dist * cp * Math.sin(cam.yaw), cam.c[1] + cam.dist * Math.sin(cam.pitch), cam.c[2] + cam.dist * cp * Math.cos(cam.yaw)]; }
+function mvpNow() {
+  const asp = glc.width / glc.height;
+  return mul(persp(FOV, asp, Math.max(0.01, cam.dist - cam.R * 3), cam.dist + cam.R * 3), lookAt(eye(), cam.c, [0, 1, 0]));
+}
+// the 4D turn: first in the XW plane, then YW, then ZW (rows; the GPU gets it column by column)
+function rot4() {
+  let R = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+  P.rot.forEach((deg, a) => {
+    const t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+    const G = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]; G[a][a] = c; G[a][3] = -s; G[3][a] = s; G[3][3] = c;
+    R = G.map((row) => [0, 1, 2, 3].map((j) => row.reduce((q, g, k) => q + g * R[k][j], 0)));
+  });
+  return R;
+}
+const colMajor = (R) => { const o = new Float32Array(16); for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) o[c * 4 + r] = R[r][c]; return o; };
+// perspective scale: a camera on the W axis at distance D; normalised so the shadow of the whole 4D ball always has radius 1
+function projParams() { const D = P.D; return P.proj === 'persp' ? [1, D, Math.sqrt(1 - 1 / (D * D))] : [0, D, 1]; }
+function shadow(R, v) {   // the 3D shadow of a 4D point (+ its 4D depth w)
+  const p = R.map((row) => row[0] * v[0] + row[1] * v[1] + row[2] * v[2] + row[3] * v[3]);
+  const [pp, D, k] = projParams(), s = pp ? D / (D - p[3]) * k : 1;
+  return [p[0] * s, p[1] * s, p[2] * s, p[3]];
+}
+function project(M, v) {
+  const w = M[3] * v[0] + M[7] * v[1] + M[11] * v[2] + M[15];
+  if (w <= 1e-6) return null;
+  const x = (M[0] * v[0] + M[4] * v[1] + M[8] * v[2] + M[12]) / w, y = (M[1] * v[0] + M[5] * v[1] + M[9] * v[2] + M[13]) / w;
+  return [(x * 0.5 + 0.5) * ov.width, (0.5 - y * 0.5) * ov.height];
+}
+
+// ---------------- the dice (worker) ----------------
+const worker = new Worker(URL.createObjectURL(new Blob([$('worker-src').textContent], { type: 'text/javascript' })));
+function workerParams() {
+  const T = geom.targets;
+  return { targets: Float64Array.from(T.flat()), nt: T.length, jump: P.jump, forbid: forbidMatrix(), memory: P.memory };
+}
+function ensureCap() {
+  if (cap === P.max) return;
+  cap = P.max; cpuIdx = new Uint8Array(cap * 2);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferData(gl.ARRAY_BUFFER, cap * 16, gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, idxBuf); gl.bufferData(gl.ARRAY_BUFFER, cap * 2, gl.DYNAMIC_DRAW);
+}
+function regenerate() {
+  ensureCap();
+  gen++; generated = 0; stepLog = {}; busy = true; genStart = performance.now();
+  worker.postMessage({ type: 'start', gen, seed: P.seed, p: workerParams(), count: Math.min(P.max, 150000) });
+  dirty = true; about(); saveHash();
+}
+worker.onmessage = (e) => {
+  const m = e.data;
+  if (m.gen !== gen) return;
+  cpuIdx.set(m.idx, m.offset * 2);
+  if (m.offset < LOGN) cpuPos.set(m.pos.subarray(0, Math.min(m.n, LOGN - m.offset) * 4), m.offset * 4);
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf); gl.bufferSubData(gl.ARRAY_BUFFER, m.offset * 16, m.pos);
+  gl.bindBuffer(gl.ARRAY_BUFFER, idxBuf); gl.bufferSubData(gl.ARRAY_BUFFER, m.offset * 2, m.idx);
+  generated = m.offset + m.n;
+  if (m.log) stepLog = m.log;
+  if (generated < P.max) worker.postMessage({ type: 'more', gen, count: Math.min(1000000, P.max - generated) });
+  else { busy = false; lastGenMs = performance.now() - genStart; }
+  dirty = true;
+};
+let lastGenMs = 0;
+
+// ---------------- view ----------------
+function fit() {     // every dot is inside the 4D ball of radius 1, and its shadow inside the 3D ball of radius 1
+  cam.c = [0, 0, 0]; cam.R = 1; cam.dist = cam.R / Math.sin(FOV / 2) * 1.15;
+  const asp = glc.width / glc.height || 1; if (asp < 1) cam.dist /= asp;
+  dirty = true;
+}
+
+// ---------------- drawing ----------------
+let lastDrawn = 0;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), r = glc.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (glc.width !== w || glc.height !== h) { glc.width = ov.width = w; glc.height = ov.height = h; dirty = true; }
+  return dpr;
+}
+function render() {
+  const dpr = resize(), W = glc.width, H = glc.height;
+  ensureFbo(W, H);
+  const Sd = Math.min(Math.floor(S), generated);
+  // while the picture moves, draw only as many dots as keep it smooth (any first-N dots are a fair sample); all of them when it stops
+  const Nd = moving ? Math.min(Sd, Math.floor(drawCap)) : Sd; lastDrawn = Nd; lastSd = Sd;
+  const M = mvpNow(), R = rot4();
+  // how many screen pixels the picture covers -> dot size + brightness that read the same at any count/zoom
+  const extent = H * cam.R / (cam.dist * Math.tan(FOV / 2));
+  const area = Math.min(W * H, Math.max(2000, extent * extent * 0.55));
+  const solid = P.look3 === 'solid';
+  const size = Nd <= 400 ? 11 * dpr : Math.min(6 * dpr, Math.max(solid ? 1.5 * dpr : 1, Math.sqrt(area / Math.max(Nd, 1)) * (solid ? 0.5 : 0.3)));
+  const D = Nd * size * size / area;
+  const E = Math.pow(2, P.exposure) * Math.min(3, 1.4 / Math.max(D, 1e-9));
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 0); gl.clearDepth(1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (Nd > 0) {
+    gl.useProgram(ptProg.p);
+    gl.uniformMatrix4fv(ptProg.u.uMVP, false, M);
+    gl.uniformMatrix4fv(ptProg.u.uR4, false, colMajor(R));
+    gl.uniform3f(ptProg.u.uProj, ...projParams());
+    gl.uniform1f(ptProg.u.uSize, size);
+    gl.uniform1i(ptProg.u.uMode, { corner: 0, pure: 1, w: 2, age: 3, gold: 4 }[P.color]);
+    gl.uniform1f(ptProg.u.uN, Nd);
+    gl.uniform3f(ptProg.u.uDepth, solid ? 2 : 1, cam.dist - cam.R, cam.dist + cam.R);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, palTex); gl.uniform1i(ptProg.u.uPal, 0);
+    if (solid) gl.enable(gl.DEPTH_TEST); else { gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); }
+    gl.bindVertexArray(vao); gl.drawArrays(gl.POINTS, 0, Nd); gl.bindVertexArray(null);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, W, H);
+  gl.useProgram(toneProg.p);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, accTex); gl.uniform1i(toneProg.u.uAcc, 0);
+  gl.uniform1f(toneProg.u.uExp, solid ? Math.pow(2, P.exposure) : E); gl.uniform1i(toneProg.u.uSolid, solid ? 1 : 0);
+  gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindVertexArray(null);
+  overlay(M, R, Sd, dpr);
+}
+function overlay(M, R, Sd, dpr) {
+  ctx.clearRect(0, 0, ov.width, ov.height);
+  const T = geom.targets, step = Sd >= 1 && Sd <= 400;
+  const sh = (v) => { const s = shadow(R, v); const p = project(M, s); return p ? [p[0], p[1], s[3]] : null; };
+  if (P.outline) {      // the 4D wireframe: edges on the near side of the 4th direction a little brighter
+    // (a dark halo under each line, so it still reads where it runs across bright dots)
+    const segs = geom.edges.map(([a, b]) => [sh(geom.verts[a]), sh(geom.verts[b])]).filter(([p, q]) => p && q);
+    ctx.lineWidth = 3.5 * dpr; ctx.strokeStyle = 'rgba(4,5,11,0.45)'; ctx.beginPath();
+    for (const [p, q] of segs) { ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); }
+    ctx.stroke();
+    ctx.lineWidth = 1.25 * dpr;
+    for (const [p, q] of segs) {
+      ctx.strokeStyle = `rgba(215,222,255,${(0.3 + 0.4 * ((p[2] + q[2]) / 2 * 0.5 + 0.5)).toFixed(3)})`;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    }
+  }
+  // step mode: the last roll, drawn out
+  if (step && Sd >= 2) {
+    const k = Sd - 1, t = cpuIdx[2 * k], a = Array.from(cpuPos.subarray(4 * k - 4, 4 * k)), b = Array.from(cpuPos.subarray(4 * k, 4 * k + 4));
+    const pa = sh(a), pb = sh(b), pt = sh(T[t]);
+    if (pa && pb && pt) {
+      ctx.setLineDash([6 * dpr, 6 * dpr]); ctx.lineWidth = 1.5 * dpr; ctx.strokeStyle = palCss[t]; ctx.globalAlpha = 0.8;
+      ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pt[0], pt[1]); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineWidth = 2.5 * dpr; ctx.strokeStyle = '#fff';
+      ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+      ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(pb[0], pb[1], 9 * dpr, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = palCss[t]; ctx.beginPath(); ctx.arc(pt[0], pt[1], 13 * dpr, 0, TAU); ctx.stroke();
+    }
+  } else if (step && Sd === 1) {
+    const p = sh(Array.from(cpuPos.subarray(0, 4)));
+    if (p) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(p[0], p[1], 9 * dpr, 0, TAU); ctx.stroke(); }
+  }
+  if (P.outline) {
+    const labels = step && T.length <= 30;
+    ctx.font = `600 ${12 * dpr}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    T.forEach((v, i) => {
+      const p = sh(v); if (!p) return;
+      const r = (geom.kinds[i] ? 2.6 : T.length > 24 ? 3.5 : 4.5) * dpr * (0.8 + 0.25 * (p[2] * 0.5 + 0.5));
+      ctx.fillStyle = palCss[i]; ctx.strokeStyle = '#04050b'; ctx.lineWidth = 2 * dpr;
+      ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, TAU); ctx.fill(); ctx.stroke();
+      if (labels) {      // the number sits just outside the dot, away from the shadow's centre
+        const c0 = sh([0, 0, 0, 0]) || p, dx = p[0] - c0[0], dy = p[1] - c0[1], l = Math.hypot(dx, dy) || 1;
+        ctx.fillStyle = '#dfe4ff'; ctx.fillText(String(i + 1), p[0] + dx / l * 15 * dpr, p[1] + dy / l * 15 * dpr);
+      }
+    });
+  }
+}
+
+// ---------------- captions ----------------
+const fracOf = (r) => { for (const [v, s] of [[1 / 2, '1/2'], [1 / 3, '1/3'], [2 / 3, '2/3'], [1 / 4, '1/4'], [3 / 4, '3/4']]) if (Math.abs(r - v) < 1e-3) return s; return `${Math.round(r * 100)}%`; };
+const near = (a, b) => Math.abs(a - b) < 1e-3;
+let lastAbout = '';
+function about() {
+  const nv = geom.verts.length, nt = geom.targets.length, r = 1 - P.jump, ruled = P.forbid.some(Boolean), d = dimension(), tj = touchJump(P);
+  const shape = {
+    penta: 'A <b>pentatope</b> is the 4D pyramid: <b>5 corners</b>, every corner joined to every other one (10 edges, all the same length). A triangle has 3 such corners, a pyramid 4; a 5th corner just as far from all four only fits in a 4th direction.',
+    tess: 'A <b>tesseract</b> is the 4D cube: <b>16 corners</b>, 32 edges, and 8 cubes as its sides. Each corner has 4 neighbours, one along each of the 4 directions.',
+    cell16: 'The <b>16-cell</b> is the 4D octahedron: <b>8 corners</b>, one at each end of the 4 axes. Every corner is joined to all the others except its opposite.',
+  }[P.shape];
+  const what = nt === nv ? `${nt} corners` : `${nt} points (${nv} corners${P.mid ? ' + edge middles' : ''}${P.faces ? ' + face centres' : ''}${P.cells ? ' + cell centres' : ''}${P.center ? ' + the centre' : ''})`;
+  let copies = `Jumping ${fracOf(P.jump)} of the way to a point shrinks the whole picture to <b>${fracOf(r)} size</b> around that point. So the dots build <b>${nt} copies</b> of the whole pattern, one at each of the ${what}, each made of ${nt} smaller copies, and so on.`;
+  let name = '';
+  if (!ruled) {
+    if (!extras(P) && near(P.jump, 0.5)) name = { penta: ' This is the <b>Sierpinski pentatope</b>: the 4D Sierpinski triangle (3 half-size copies) and pyramid (4).', tess: ' 16 half-size tesseracts fill the big one exactly, with no gaps: <b>just fog</b>, like the square in the video.', cell16: ' The <b>Sierpinski 16-cell</b>: 8 half-size copies that touch at their corners.' }[P.shape];
+    else if (P.shape === 'tess' && near(P.jump, 2 / 3)) {
+      if (!extras(P)) name = ' <b>4D Cantor dust</b>: 16 clusters, each 16 smaller clusters, and so on: the gaps between them never close.'
+        + (P.proj === 'persp' ? ' In the perspective shadow the small clusters fan out into spikes: each sits at its own depth along the 4th direction, so each lands at its own size.' : '');
+      else if (P.mid && !P.faces && !P.cells && !P.center) name = ' The <b>4D Menger sponge</b>: 48 copies at 1/3 size (16 corners + 32 edge middles). The 33 others of the 81 small cubes are left empty: every one that sits at the centre in 2 or more of the 4 directions. Its flat shadow, straight down the 4th axis, is exactly the ordinary 3D Menger sponge; turn it in 4D and the holes fill in.';
+      else if (P.center && !P.mid && !P.faces && !P.cells) name = ' A <b>4D Vicsek cross</b>: 17 copies, the corners joined through the centre.';
+    }
+  } else name = ' The rule takes some choices away, so some copies inside the copies go missing.';
+  if (tj != null && P.jump < tj - 1e-6) name += ' This jump is too short: the copies <b>overlap</b>, so the pattern smears.';
+  let dim = '';
+  if (d != null) dim = d >= 3.9995 ? '<p>Dimension <b>4</b>: it fills 4D space solid.</p>'
+    : `<p>Dimension <b>${d.toFixed(2)}</b> (a line is 1, a sheet 2, a solid 3, filled 4D space 4).${d > 3 ? ' More than 3, so its 3D shadow looks almost solid: the holes only show as the shadow turns.' : ''}</p>`;
+  const shadowTxt = `Your screen can't show 4D, so you see the shape's <b>3D shadow</b>, the way a cube casts a flat shadow on a wall. When it turns in 4D, parts of the shadow slide <b>through each other</b> and the shape turns inside out, like the front and back squares of a turning wire cube crossing on the wall. In 4D nothing ever touches.`
+    + (P.proj === 'persp' ? ' Perspective: the part nearer the 4D camera looks bigger, so the far part sits inside the near one.' : ' Flat shadow: the 4th direction is simply dropped, so the near and far parts land on top of each other.');
+  const html = `<p>${shape}</p><p>${copies}${name}</p>${dim}<p>${shadowTxt}</p>`;
+  if (html !== lastAbout) { $('about').innerHTML = html; lastAbout = html; }
+  $('targetsInfo').textContent = `${nt} point${nt > 1 ? 's' : ''} to jump toward.`;
+}
+
+// ---------------- step info + readouts ----------------
+const fmt = (n) => Math.round(n).toLocaleString('en-US');
+function stepText(Sd) {
+  if (Sd < 1) return 'Press ▶ to roll, or step one dot at a time.';
+  if (Sd > 400) return busy ? `Rolling dice... ${fmt(generated)} of ${fmt(P.max)}` : `${fmt(Sd)} dots. Step back below 400 dots to see each roll.`;
+  const k = Sd - 1;
+  if (k === 0) return 'Dot 0: the start. Anywhere works: the first few dots land off the pattern, then every dot lands on it.';
+  const t = cpuIdx[2 * k], rej = stepLog[k], pct = Math.round(P.jump * 100);
+  let s = `Dot ${k}: `;
+  if (rej) s += rej.map((r) => `<span class="no">rolled ${r + 1}</span>`).join(', ') + ' (not allowed), ';
+  s += `<span class="ok">rolled ${t + 1}</span> → jump ${pct}% of the way to ${t < geom.verts.length ? 'corner' : 'point'} ${t + 1}`;
+  return s + '.';
+}
+let lastInfo = '';
+function readouts() {
+  const Sd = Math.min(Math.floor(S), generated);
+  $('dotsVal').textContent = fmt(Math.floor(S));
+  if (document.activeElement !== $('dots')) $('dots').value = sliderOf(S);
+  const info = stepText(Sd); if (info !== lastInfo) { $('stepInfo').innerHTML = info; lastInfo = info; }
+  $('play').textContent = playing ? '❚❚' : '▶';
+  rotReadouts();
+}
+const sliderOf = (s) => Math.round(Math.log(s + 1) / Math.log(P.max + 1) * 1000);
+const dotsOf = (u) => Math.round(Math.pow(P.max + 1, u / 1000)) - 1;
+function rotReadouts() {
+  ['rxw', 'ryw', 'rzw'].forEach((id, a) => {
+    const v = P.rot[a], el = $(id);
+    if (document.activeElement !== el && Math.abs(+el.value - v) > 0.25) el.value = v;
+    const tx = `${Math.round(v)}°`; if ($(id + 'Val').textContent !== tx) $(id + 'Val').textContent = tx;
+  });
+}
+
+// ---------------- UI ----------------
+function buildPresets() {
+  const sel = $('preset'); sel.innerHTML = '<option value="">Pick a shape...</option>';
+  let grp = null, cur = '';
+  PRESETS.forEach(([g, name], i) => { if (g !== cur) { grp = document.createElement('optgroup'); grp.label = g; sel.appendChild(grp); cur = g; } const o = document.createElement('option'); o.value = i; o.textContent = name; grp.appendChild(o); });
+}
+function applyPreset(i) {
+  const [, , p] = PRESETS[i];
+  const keep = {}; for (const k of VIEWKEYS) keep[k] = P[k];
+  P = { ...DEF, ...keep, ...p, rot: (p.rot || DEF.rot).slice(), forbid: [] };
+  geom = geometry(P);
+  for (const k of p.rule || []) P.forbid[k] = true;
+  cam.yaw = 0.65; cam.pitch = 0.32; drawCap = Infinity;
+  syncUI(); palette(); fit(); regenerate();
+  S = P.max; playing = false; SND.intro();
+}
+function buildChips() {
+  const box = $('chips'); box.innerHTML = '';
+  geom.labels.forEach((lab, k) => {
+    const b = document.createElement('button');
+    b.textContent = lab; b.title = geom.tips[k];
+    b.className = P.forbid[k] ? 'on' : '';
+    b.onclick = () => {
+      const nf = P.forbid.slice(); nf[k] = !nf[k];
+      if (geom.labels.every((_, j) => nf[j])) { b.animate([{ transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'none' }], 200); return; }
+      P.forbid = nf; b.className = nf[k] ? 'on' : ''; regenerate();
+    };
+    box.appendChild(b);
+  });
+}
+function syncUI() {
+  $('shape').value = P.shape;
+  for (const id of ['mid', 'faces', 'cells', 'center']) $(id).checked = P[id];
+  $('jump').value = P.jump; $('jumpVal').textContent = (P.jump * 100).toFixed(1) + '%';
+  const tj = touchJump(P); $('touch').disabled = tj == null; $('touch').title = tj == null ? 'No simple answer for this set of points' : `jump ${(tj * 100).toFixed(1)}%`;
+  $('memory').value = P.memory;
+  $('max').value = P.max; $('color').value = P.color; $('exposure').value = P.exposure; $('expVal').textContent = (P.exposure > 0 ? '+' : '') + P.exposure.toFixed(1);
+  $('look3').value = P.look3; $('outline').checked = P.outline; $('spin').checked = P.spin;
+  $('proj').value = P.proj; $('D').value = P.D; $('DVal').textContent = P.D.toFixed(2); $('rowD').classList.toggle('hide', P.proj !== 'persp');
+  $('aspeed').value = String(P.aspeed); syncAuto(); rotReadouts();
+  buildChips(); about();
+}
+function syncAuto() { $('auto').textContent = P.auto ? '⟳ Turning in 4D' : '⟳ Turn in 4D'; $('auto').title = P.auto ? 'Click to stop' : 'Turn it in 4D by itself'; $('auto').classList.toggle('on', P.auto); }
+function shapeChanged() { geom = geometry(P); P.forbid = []; syncUI(); palette(); regenerate(); SND.intro(); }
+$('preset').onchange = (e) => { if (e.target.value !== '') applyPreset(+e.target.value); };
+$('shape').onchange = (e) => { P.shape = e.target.value; P.mid = P.faces = P.cells = P.center = false; P.jump = 0.5; shapeChanged(); S = P.max; };
+for (const id of ['mid', 'faces', 'cells', 'center']) $(id).onchange = (e) => { P[id] = e.target.checked; const tj = touchJump(P); if (tj) P.jump = tj; shapeChanged(); };
+$('jump').oninput = (e) => { P.jump = +e.target.value; $('jumpVal').textContent = (P.jump * 100).toFixed(1) + '%'; regenerate(); };
+$('touch').onclick = () => { const tj = touchJump(P); if (tj) { P.jump = tj; syncUI(); regenerate(); } };
+$('half').onclick = () => { P.jump = 0.5; syncUI(); regenerate(); };
+$('twoThirds').onclick = () => { P.jump = 2 / 3; syncUI(); regenerate(); };
+$('memory').onchange = (e) => { P.memory = +e.target.value; regenerate(); };
+['rxw', 'ryw', 'rzw'].forEach((id, a) => { $(id).oninput = (e) => { P.rot[a] = +e.target.value; dirty = true; rotReadouts(); }; $(id).onchange = () => saveHash(); });
+$('auto').onclick = () => { P.auto = !P.auto; syncAuto(); saveHash(); dirty = true; };
+$('aspeed').onchange = (e) => { P.aspeed = +e.target.value; saveHash(); };
+$('proj').onchange = (e) => { P.proj = e.target.value; $('rowD').classList.toggle('hide', P.proj !== 'persp'); about(); dirty = true; saveHash(); };
+$('D').oninput = (e) => { P.D = +e.target.value; $('DVal').textContent = P.D.toFixed(2); dirty = true; saveHash(); };
+$('reset4').onclick = () => { P.rot = DEF.rot.slice(); dirty = true; rotReadouts(); saveHash(); };
+$('max').onchange = (e) => { const atEnd = S >= P.max; P.max = +e.target.value; S = atEnd ? P.max : Math.min(S, P.max); drawCap = Infinity; regenerate(); };
+$('color').onchange = (e) => { P.color = e.target.value; dirty = true; saveHash(); };
+$('exposure').oninput = (e) => { P.exposure = +e.target.value; $('expVal').textContent = (P.exposure > 0 ? '+' : '') + P.exposure.toFixed(1); dirty = true; saveHash(); };
+$('look3').onchange = (e) => { P.look3 = e.target.value; dirty = true; saveHash(); };
+$('outline').onchange = (e) => { P.outline = e.target.checked; dirty = true; saveHash(); };
+$('spin').onchange = (e) => { P.spin = e.target.checked; saveHash(); };
+$('reroll').onclick = () => { P.seed = (Math.random() * 2 ** 31) >>> 0; regenerate(); };
+$('resetView').onclick = () => { cam.yaw = 0.65; cam.pitch = 0.32; fit(); };
+$('dots').oninput = (e) => { playing = false; const a = Math.floor(S); S = dotsOf(+e.target.value); dirty = true; if (S !== a) SND.scrub(a, S); };
+$('dots').onchange = () => saveHash();
+const stepBy = (d) => { playing = false; const a = Math.floor(S); S = Math.max(0, Math.min(P.max, a + d)); dirty = true; saveHash();
+  if (S > a) SND.dots(Math.min(a, generated), Math.min(S, generated), 0.6, true); else if (S < a) SND.back(S); };
+$('bm').onclick = (e) => stepBy(e.shiftKey ? -10 : -1);
+$('bp').onclick = (e) => stepBy(e.shiftKey ? 10 : 1);
+$('b0').onclick = () => { playing = false; S = 0; dirty = true; };
+$('b1').onclick = () => { playing = false; S = P.max; dirty = true; saveHash(); };
+$('play').onclick = togglePlay;
+function togglePlay() { playing = !playing; if (playing && S >= P.max) S = 0; playS = S; dirty = true; }
+$('savePng').onclick = () => {
+  const m = moving; moving = false; render(); moving = m;
+  const c = document.createElement('canvas'); c.width = glc.width; c.height = glc.height;
+  const x = c.getContext('2d'); x.drawImage(glc, 0, 0); x.drawImage(ov, 0, 0);
+  c.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `chaos-game-4d-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
+};
+$('copyLink').onclick = async () => {
+  saveHash(true);
+  try { await navigator.clipboard.writeText(location.href); flash('Link copied: it opens this exact picture.'); }
+  catch { flash('The address bar now holds a link to this exact picture.'); }
+};
+let flashMsg = '', flashUntil = 0;
+function flash(m) { flashMsg = m; flashUntil = performance.now() + 3000; }
+window.addEventListener('keydown', (e) => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName) && document.activeElement.type !== 'range') return;
+  if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); stepBy(e.shiftKey ? -10 : -1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); stepBy(e.shiftKey ? 10 : 1); }
+  else if (e.key === 'Home') { playing = false; S = 0; dirty = true; }
+  else if (e.key === 'End') { playing = false; S = P.max; dirty = true; }
+});
+
+// pointer: drag (3D turn) / right- or shift-drag (move) / ctrl- or alt-drag (4D turn) / wheel / pinch / double-click
+const ptrs = new Map(); let pinch0 = 0, dragging = false;
+glc.addEventListener('contextmenu', (e) => e.preventDefault());
+glc.addEventListener('pointerdown', (e) => { glc.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, b: e.button, s: e.shiftKey, c: e.ctrlKey || e.altKey || e.metaKey }); dragging = true; if (ptrs.size === 2) pinch0 = pinchDist(); });
+glc.addEventListener('pointerup', (e) => { ptrs.delete(e.pointerId); dragging = ptrs.size > 0; if (!dragging) saveHash(); });
+glc.addEventListener('pointercancel', (e) => { ptrs.delete(e.pointerId); dragging = ptrs.size > 0; });
+function pinchDist() { const [a, b] = [...ptrs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); }
+const wrap = (d) => ((d + 180) % 360 + 360) % 360 - 180;
+glc.addEventListener('pointermove', (e) => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 2) { const d = pinchDist(); if (pinch0 > 0) zoomBy(pinch0 / d); pinch0 = d; return; }
+  if (p.c) { P.rot[0] = wrap(P.rot[0] + dx * 0.4); P.rot[1] = wrap(P.rot[1] - dy * 0.4); }
+  else if (p.b === 2 || p.s) {
+    const e3 = eye(), f = unit(sub(cam.c, e3)), right = unit(cross(f, [0, 1, 0])), up = cross(right, f), k = cam.dist * 0.0016;
+    cam.c = cam.c.map((c, i) => c - right[i] * dx * k + up[i] * dy * k);
+  } else { cam.yaw -= dx * 0.008; cam.pitch = Math.max(-1.5, Math.min(1.5, cam.pitch + dy * 0.008)); }
+  dirty = true;
+});
+glc.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.0015)); }, { passive: false });
+glc.addEventListener('dblclick', () => { cam.yaw = 0.65; cam.pitch = 0.32; fit(); });
+function zoomBy(f) { cam.dist = Math.max(cam.R * 0.02, Math.min(cam.R * 40, cam.dist * f)); dirty = true; }
+
+// ---------------- link state ----------------
+let hashTimer = 0;
+function saveHash(now) {
+  clearTimeout(hashTimer);
+  const w = () => { const o = {}; for (const k in DEF) if (JSON.stringify(P[k]) !== JSON.stringify(DEF[k])) o[k] = P[k];
+    if (o.rot) o.rot = o.rot.map((v) => Math.round(v * 10) / 10);
+    o.S = Math.floor(S);
+    history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(o))); };
+  if (now) w(); else hashTimer = setTimeout(w, 400);
+}
+function loadHash() {
+  try {
+    const o = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+    const S0 = o.S; delete o.S;
+    P = { ...DEF, ...o }; P.rot = (Array.isArray(P.rot) && P.rot.length === 3 ? P.rot : DEF.rot).map(Number);
+    if (!SHAPES[P.shape]) P.shape = DEF.shape;
+    P.forbid = (P.forbid || []).map(Boolean);
+    geom = geometry(P); syncUI(); palette(); fit(); regenerate();
+    S = Number.isFinite(S0) ? Math.min(S0, P.max) : P.max; return true;
+  } catch { return false; }
+}
+
+// ---------------- sound: the video's score, live (ChaosGame/music/cg_score.py v5), as in the 2D + 3D explorer ----------------
+// Every corner is a mallet note; a pad changes chord every 2 bars at 96 bpm with a soft sub; a thump + brush groove
+// joins while the dots pour; the die rattles when a rule blocks a roll. All in 5-limit just intonation on C, the same
+// table for mallets, pads and sub, so nothing beats against anything.
+const SND = (() => {
+  const C4 = 261.6256, JI = { 0: 1, 2: 9 / 8, 4: 5 / 4, 5: 4 / 3, 7: 3 / 2, 9: 5 / 3, 10: 16 / 9, 11: 15 / 8 };
+  const D_LOW = new Set(['Dm7', 'Bbmaj7', 'F', 'Fmaj7', 'Am', 'Am7']);
+  const CH = { C: [48, 55, 64, 67], Cadd9: [48, 55, 62, 64, 67], Fmaj7: [41, 48, 57, 64], Gsus: [43, 50, 60, 62], Cmaj7: [48, 55, 59, 64],
+    Dm7: [38, 50, 57, 60, 65], Bbmaj7: [46, 50, 57, 62], Am7: [45, 52, 55, 60], Em7: [40, 52, 55, 62] };
+  const ROOT = { C: 36, Cadd9: 36, Fmaj7: 29, Gsus: 31, Cmaj7: 36, Dm7: 26, Bbmaj7: 34, Am7: 33, Em7: 28 };
+  const PROG = { main: ['C', 'Am7', 'Fmaj7', 'Gsus', 'Cadd9', 'Am7', 'Fmaj7', 'Em7', 'Gsus'], square: ['Em7', 'Cmaj7', 'Fmaj7', 'Am7', 'Gsus', 'Cmaj7'],
+    pyramid: ['Dm7', 'Bbmaj7', 'Dm7', 'Fmaj7'], fern: ['Gsus', 'Cadd9', 'Am7', 'Fmaj7', 'C', 'Am7'] };
+  const LAD = [60, 64, 67, 71, 72, 74, 76, 79, 81, 69, 62, 65, 57, 55, 59, 52, 48, 53, 83, 84];
+  const BEAT = 60 / 96, BAR = 4 * BEAT, PHRASE = 2 * BAR;
+  let ac = null, out, musicG, diceG, revIn, hallIn, on = false, t0 = 0, nextChord = 0, nextBeat = 0, chordNow = 'C';
+  let lastName = '', groove = 0, grooveWant = 0, budget = 0, lastScrub = 0, progK = 0;
+  const cache = new Map();
+  const vol = { music: 0.8, dice: 0.8 };
+  try { const v = JSON.parse(localStorage.getItem('cg-sound') || '{}'); Object.assign(vol, v.vol || {}); } catch (e) { /* private mode */ }
+
+  function jhz(m, chord) {
+    const pc = ((m % 12) + 12) % 12; let r = JI[pc];
+    if (r == null) return 440 * 2 ** ((m - 69) / 12);
+    if (pc === 2 && D_LOW.has(chord)) r = 10 / 9;
+    return C4 * 2 ** (Math.floor(m / 12) - 5) * r;
+  }
+  // one-pole filters for the buffers we synthesise
+  function lp(x, fc, sr) { const a = 1 - Math.exp(-2 * Math.PI * fc / sr); let y = 0; for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); x[i] = y; } }
+  function hp(x, fc, sr) { const a = Math.exp(-2 * Math.PI * fc / sr); let px = 0, y = 0; for (let i = 0; i < x.length; i++) { y = a * (y + x[i] - px); px = x[i]; x[i] = y; } }
+  function norm(x) { let m = 0; for (const v of x) m = Math.max(m, Math.abs(v)); if (m > 0) for (let i = 0; i < x.length; i++) x[i] /= m; return x; }
+  function buf(chs, sr) { const b = ac.createBuffer(chs.length, chs[0].length, sr || ac.sampleRate); chs.forEach((c, i) => b.copyToChannel(c, i)); return b; }
+  function cached(key, mk) { if (!cache.has(key)) cache.set(key, mk()); return cache.get(key); }
+
+  // sines by rotation and decays by multiplication: ~10x cheaper than Math.sin/exp per sample (a 6 s note in a few ms)
+  function partial(x, sr, f, amp, ph, tau, upto) {
+    const w = 2 * Math.PI * f / sr, cw = Math.cos(w), sw = Math.sin(w), k = Math.exp(-1 / (tau * sr)), n = Math.min(x.length, upto || x.length);
+    let c = Math.cos(ph), sn = Math.sin(ph), e = amp;
+    for (let i = 0; i < n; i++) { x[i] += sn * e; const c2 = c * cw - sn * sw; sn = sn * cw + c * sw; c = c2; e *= k; }
+  }
+  function mallet(f, ring) {       // warm marimba: sine + tuned-bar partials 4x / 10x, felt thock, lowpassed
+    return cached(`m${f.toFixed(2)}r${ring}`, () => {
+      const sr = ac.sampleRate, d1 = ring * 1.5 * (440 / f) ** 0.35, n = Math.floor(Math.min(6, 5 * d1 + 0.6) * sr), x = new Float32Array(n);
+      partial(x, sr, f, 1, 0, d1);
+      partial(x, sr, 4 * f, 0.2, 0.6, 0.11, Math.floor(0.9 * sr));
+      partial(x, sr, 10 * f, 0.045, 1.3, 0.025, Math.floor(0.25 * sr));
+      const ka = Math.exp(-1 / (0.0012 * sr)), kn = Math.exp(-1 / (0.006 * sr)), fade = 0.6 * sr;
+      let ea = 1, en = 0.05;
+      for (let i = 0; i < n; i++) { x[i] *= 1 - ea; ea *= ka; if (en > 1e-5) { x[i] += (Math.random() * 2 - 1) * en; en *= kn; } if (n - i < fade) x[i] *= (n - i) / fade; }
+      lp(x, 2500, sr); lp(x, 2500, sr); hp(x, 40, sr);
+      return buf([norm(x)]);
+    });
+  }
+  function grainB(f, len) {
+    return cached(`g${f.toFixed(2)}l${len}`, () => {
+      const sr = ac.sampleRate, n = Math.floor(len * sr), x = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr;
+        x[i] = (Math.sin(2 * Math.PI * f * t) * Math.exp(-t / (len / 4.5)) + 0.12 * Math.sin(8 * Math.PI * f * t) * Math.exp(-t / 0.03)) * (1 - Math.exp(-t / 0.002));
+      }
+      lp(x, 3200, sr);
+      return buf([x]);
+    });
+  }
+  function noiseB(key, len, lo, hi, dec, att) {
+    return cached(key, () => {
+      const sr = ac.sampleRate, n = Math.floor(len * sr), x = new Float32Array(n);
+      for (let i = 0; i < n; i++) x[i] = Math.random() * 2 - 1;
+      hp(x, lo, sr); hp(x, lo, sr); lp(x, hi, sr); lp(x, hi, sr);
+      for (let i = 0; i < n; i++) { const t = i / sr; x[i] *= Math.exp(-t / dec) * (1 - Math.exp(-t / att)); }
+      return buf([norm(x)]);
+    });
+  }
+  function thumpB() {
+    return cached('thump', () => {
+      const sr = ac.sampleRate, n = Math.floor(0.45 * sr), x = new Float32Array(n); let ph = 0;
+      for (let i = 0; i < n; i++) { const t = i / sr; ph += 2 * Math.PI * (46 + 70 * Math.exp(-t / 0.035)) / sr; x[i] = Math.sin(ph) * Math.exp(-t / 0.16) * (1 - Math.exp(-t / 0.002)); }
+      return buf([x]);
+    });
+  }
+  // the pad chords are rendered in their own worker (each takes ~0.3 s of maths: on the page it stuttered the picture)
+  const padReady = new Map(), padAsked = new Set();
+  const padWorker = new Worker(URL.createObjectURL(new Blob([`
+    function lp(x, fc, sr) { const a = 1 - Math.exp(-2 * Math.PI * fc / sr); let y = 0; for (let i = 0; i < x.length; i++) { y += a * (x[i] - y); x[i] = y; } }
+    function hp(x, fc, sr) { const a = Math.exp(-2 * Math.PI * fc / sr); let px = 0, y = 0; for (let i = 0; i < x.length; i++) { y = a * (y + x[i] - px); px = x[i]; x[i] = y; } }
+    onmessage = (e) => {
+      const { nm, freqs, len, sr } = e.data, n = Math.floor(len * sr), L = new Float32Array(n), R = new Float32Array(n);
+      for (const f of freqs) for (let h = 1; h <= 5; h++) {
+        const dep = 8 * (h === 1 ? 0.5 : 1) / 20 * Math.LN10, amp = 1 / h ** 2.3;   // each partial swells +-8 dB on its own slow cycle
+        for (const ch of [L, R]) {
+          const fr = 0.06 + Math.random() * 0.24, p0 = Math.random() * 6.28, q0 = Math.random() * 6.28, w = 2 * Math.PI * f * h / sr, wd = 2 * Math.PI * fr / sr;
+          for (let i = 0; i < n; i++) ch[i] += Math.sin(w * i + q0) * Math.exp(dep * Math.sin(wd * i + p0)) * amp;
+        }
+      }
+      for (const ch of [L, R]) {
+        lp(ch, 1400, sr); lp(ch, 1400, sr); hp(ch, 30, sr);
+        for (let i = 0; i < n; i++) { const t = i / sr; ch[i] *= Math.min(1, t / 0.7) * Math.min(1, (len - t) / 1.0) / freqs.length; }
+      }
+      postMessage({ nm, L, R, sr }, [L.buffer, R.buffer]);
+    };`], { type: 'text/javascript' })));
+  padWorker.onmessage = (e) => { const { nm, L, R, sr } = e.data; padReady.set(nm, buf([L, R], sr)); };
+  function askPad(nm) { if (padAsked.has(nm)) return; padAsked.add(nm); padWorker.postMessage({ nm, freqs: CH[nm].map((m) => jhz(m, nm)), len: PHRASE + 1.2, sr: 16000 }); }
+  function padB(nm) { askPad(nm); return padReady.get(nm) || null; }
+  function subB(nm) {
+    return cached('sub' + nm, () => {
+      const sr = 16000, len = PHRASE + 1.0, n = Math.floor(len * sr), x = new Float32Array(n);
+      const r = ROOT[nm] < 31 ? ROOT[nm] + 12 : ROOT[nm], f = jhz(r, nm);
+      for (let i = 0; i < n; i++) { const t = i / sr; x[i] = (Math.sin(2 * Math.PI * f * t) + 0.25 * Math.sin(4 * Math.PI * f * t + 0.3)) * Math.min(1, t / 0.4) * Math.min(1, (len - t) / 1.0); }
+      return buf([x], sr);
+    });
+  }
+  function irB(secs, pre, lo, hi) {   // a decaying noise impulse response (the video's convolution reverbs)
+    const sr = ac.sampleRate, n = Math.floor((secs + pre) * sr), chs = [];
+    for (let c = 0; c < 2; c++) {
+      const x = new Float32Array(n);
+      for (let i = Math.floor(pre * sr); i < n; i++) { const t = i / sr - pre; x[i] = (Math.random() * 2 - 1) * Math.exp(-t / (secs / 6.9)) * (1 - Math.exp(-t / 0.006)); }
+      hp(x, lo, sr); lp(x, hi, sr);
+      let e = 0; for (const v of x) e += v * v; e = Math.sqrt(e); for (let i = 0; i < n; i++) x[i] /= e;
+      chs.push(x);
+    }
+    return buf(chs);
+  }
+
+  function play(b, t, gain, pan, bus, sendRev, sendHall) {
+    const s = ac.createBufferSource(); s.buffer = b;
+    const g = ac.createGain(); g.gain.value = gain; s.connect(g);
+    let node = g;
+    if (pan != null && pan !== 0.5) { const p = ac.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, (pan - 0.5) * 2)); g.connect(p); node = p; }
+    node.connect(bus);
+    if (sendRev) { const sg = ac.createGain(); sg.gain.value = sendRev; node.connect(sg); sg.connect(revIn); }
+    if (sendHall) { const sg = ac.createGain(); sg.gain.value = sendHall; node.connect(sg); sg.connect(hallIn); }
+    s.start(Math.max(t, ac.currentTime));
+  }
+  const strike = (t, m, amp, pan, ring = 1.0) => play(mallet(jhz(m, chordNow), ring), t, amp, pan, diceG, 0.35, 0.15);
+  const grain = (t, m, amp, pan, len = 0.3, hallS = 0.3) => play(grainB(jhz(m, chordNow), len), t, amp * 1.4, pan, diceG, 0, hallS);
+  const rattle = (t, amp, pan) => play(noiseB('rattle', 0.06, 250, 1600, 0.012, 0.002), t, amp, pan, diceG, 0, 0);
+
+  function start() {
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ac.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 8; comp.ratio.value = 8; comp.attack.value = 0.004; comp.release.value = 0.25;
+    out = ac.createGain(); out.gain.value = 0.75; out.connect(comp); comp.connect(ac.destination);
+    if (window.__cgTap) window.__cgTap(ac, comp, out);   // test hook (level meters); unused on the site
+    musicG = ac.createGain(); diceG = ac.createGain(); musicG.connect(out); diceG.connect(out);
+    const rev = ac.createConvolver(); rev.normalize = false; rev.buffer = irB(1.8, 0.018, 180, 6500);
+    const hall = ac.createConvolver(); hall.normalize = false; hall.buffer = irB(3.4, 0.025, 140, 5000);
+    revIn = ac.createGain(); hallIn = ac.createGain(); revIn.connect(rev); hallIn.connect(hall);
+    const wet = ac.createGain(); wet.gain.value = 0.4; rev.connect(wet); hall.connect(wet); wet.connect(out);
+    applyVol();
+    askPad(PROG[progName()][0]); for (const k of Object.values(PROG).flat()) askPad(k);   // the first chord renders first (~0.3 s)
+    t0 = ac.currentTime + 0.6; nextChord = t0; nextBeat = t0;
+    setInterval(tick, 50);
+    document.addEventListener('visibilitychange', () => { if (!ac) return; if (document.hidden) ac.suspend(); else if (on) ac.resume(); });
+  }
+  function applyVol() {
+    if (!ac) return;
+    musicG.gain.setTargetAtTime(vol.music ** 1.6 * 0.733, ac.currentTime, 0.05);
+    diceG.gain.setTargetAtTime(vol.dice ** 1.6, ac.currentTime, 0.05);
+  }
+  function progName() { return P.shape === 'tess' ? 'square' : P.shape === 'cell16' ? 'fern' : 'main'; }
+  function tick() {
+    if (!on || !ac || ac.state !== 'running') return;
+    const now = ac.currentTime, ahead = now + 0.3;
+    if (nextChord < now) { nextChord = now + 0.05; nextBeat = nextChord; t0 = nextChord; }   // after a pause: pick up again, no backlog
+    while (nextChord < ahead) {          // a new chord every 2 bars, never the same one twice in a row
+      const prog = PROG[progName()];
+      let nm = prog[progK++ % prog.length];
+      if (nm === lastName) nm = prog[progK++ % prog.length];
+      const first = lastName === '';
+      const pb = padB(nm); if (pb) play(pb, nextChord, (first ? 0.6 : 1) * 0.21, null, musicG, 0, 0.35);
+      play(subB(nm), nextChord, 0.16, null, musicG, 0, 0);
+      const tc = nextChord;
+      if (first) chordNow = nm; else setTimeout(() => { chordNow = nm; }, Math.max(0, (tc - now) * 1000));
+      lastName = nm; nextChord += PHRASE;
+      for (const k of Object.values(PROG).flat()) askPad(k);   // every chord renders in the background once
+    }
+    groove += (grooveWant - groove) * 0.04;
+    while (nextBeat < ahead) {           // soft thump on 1 and 3, a low brushed tick on the offbeats
+      const b = Math.round((nextBeat - t0) / BEAT), pos = ((b % 4) + 4) % 4;
+      if (groove > 0.02) {
+        const sh = noiseB('shaker', 0.1, 300, 1600, 0.03, 0.005);
+        if (pos === 0 || pos === 2) play(thumpB(), nextBeat, 0.55 * 0.8 * groove, null, musicG, 0, 0);
+        play(sh, nextBeat + BEAT / 2, 0.07 * groove, 0.62, musicG, 0, 0);
+        if (pos === 3) play(sh, nextBeat + BEAT * 0.75, 0.032 * groove, 0.38, musicG, 0, 0);
+      }
+      nextBeat += BEAT;
+    }
+  }
+
+  // which note, and where in the stereo field, each corner (or recipe rule) sits
+  function noteOf(c) {
+    const nv = geom.verts.length;
+    const base = P.shape === 'penta' ? [60, 62, 64, 67, 69] : null;   // the pentatope's 5 corners: the 5 notes of C pentatonic
+    if (c < nv) return base ? base[c] : LAD[c % LAD.length];
+    return LAD[(c - nv) % LAD.length] - 12;
+  }
+  function panOf(c) {
+    const t = geom.targets[c]; return t ? 0.5 + 0.35 * t[0] : 0.5;
+  }
+  function warm() {   // build this shape's notes a few at a time in idle moments, so steps never wait on synthesis
+    const n = Math.min(geom.targets.length, 24), list = [];
+    for (let c = 0; c < n; c++) { const m = noteOf(c); for (const nm of new Set(Object.values(PROG).flat())) list.push([m, nm]); }
+    const go = () => { const t = performance.now(); while (list.length && performance.now() - t < 8) { const [m, nm] = list.pop(); const f = jhz(m, nm); mallet(f, 0.9); grainB(jhz(m + 12, nm), 0.18); grainB(f, 0.34); } if (list.length) setTimeout(go, 30); };
+    setTimeout(go, 400);
+  }
+  const save = () => { try { localStorage.setItem('cg-sound', JSON.stringify({ vol })); } catch (e) { /* private mode */ } };
+
+  return {
+    get on() { return on; },
+    vol,
+    async toggle() {
+      on = !on;
+      if (on && !ac) start(); else if (ac) { if (on) await ac.resume(); else await ac.suspend(); }
+      save();
+      if (on) this.intro();
+      return on;
+    },
+    setVol(k, v) { vol[k] = v; applyVol(); save(); },
+    groove(want) { grooveWant = want ? 1 : 0; },
+    intro() {        // a new shape: its corners introduce themselves, one note each
+      if (!on || !ac) return;
+      warm();
+      const n = Math.min(geom.verts.length, 8), t = ac.currentTime + 0.05;
+      for (let i = 0; i < n; i++) strike(t + i * 0.16, noteOf(i), 0.3, panOf(i), 1.3);
+    },
+    finale() {       // all dots in: the corner chord rings
+      if (!on || !ac) return;
+      const n = Math.min(geom.verts.length, 6), k = Math.min(n ** 0.25, 1.5) / Math.sqrt(n), t = ac.currentTime + 0.02;
+      for (let i = 0; i < n; i++) strike(t + i * 0.03, noteOf(i), 0.42 * k * 1.4, panOf(i), 2.0);
+    },
+    // dots a..b-1 just landed (over dt seconds): play the real rolls, thinned to what an ear can follow
+    dots(a, b, dt, stepping) {
+      if (!on || !ac || b <= a) return;
+      const now = ac.currentTime, rate = (b - a) / Math.max(dt, 1 / 120);
+      if (stepping || rate <= 5) {       // walked rolls: blocked rolls rattle, the corner's note as the die lands, a tick as the dot lands
+        const k0 = Math.max(a, b - 3);
+        for (let i = k0; i < b; i++) {
+          const t = now + 0.02 + (i - k0) * Math.min(0.2, dt / (b - k0));
+          if (i === 0) { grain(t, 72, 0.06, 0.5, 0.25); continue; }
+          const c = cpuIdx[2 * i], rej = stepLog[i] || [];
+          rej.forEach((r, j) => rattle(t + 0.07 * j, 0.25, panOf(r)));
+          const td = t + rej.length * 0.07;
+          strike(td, noteOf(c), 0.42, panOf(c), 0.9);
+          grain(td + 0.14, noteOf(c) + 12, 0.05, panOf(c), 0.18);
+        }
+        return;
+      }
+      budget += dt * Math.min(16, rate);
+      const k = Math.floor(budget); budget -= k;
+      if (k <= 0) return;
+      const amp = 0.75 * 0.09 / Math.max(1, rate / 40) ** 0.12, smear = rate > 3000;
+      for (let j = 0; j < k; j++) {
+        const i = Math.min(b - 1, a + Math.floor((j + Math.random()) / k * (b - a))), c = cpuIdx[2 * i];
+        if (c === 255) continue;
+        const oc = rate > 300 && Math.random() < 0.3 ? 12 : 0, t = now + 0.02 + j / k * dt;
+        if (smear) grain(t, noteOf(c) + oc, amp * 0.8, panOf(c), 0.5, 1.1);
+        else grain(t, noteOf(c) + oc, amp, panOf(c), oc ? 0.22 : 0.34);
+      }
+    },
+    back(i) {
+      if (!on || !ac || i < 1) return;
+      const c = cpuIdx[2 * (i - 1)]; if (c !== 255) grain(ac.currentTime + 0.01, noteOf(c), 0.05, panOf(c), 0.2);
+    },
+    scrub(a, b) {    // dragging the timeline: a soft grain of the newest dot, at most ~20 a second
+      if (!on || !ac) return;
+      const now = performance.now(); if (now - lastScrub < 50) return; lastScrub = now;
+      const i = Math.max(1, Math.min(b, generated) - 1), c = cpuIdx[2 * i];
+      if (c !== 255) grain(ac.currentTime + 0.01, noteOf(c), 0.06, panOf(c), 0.25);
+    },
+  };
+})();
+
+// ---------------- loop ----------------
+let last = performance.now(), frames = 0, fpsT = last, fps = 0, wasMoving = false;
+const AUTO = [0.35, 0.13, 0.22];       // degrees-per-second weights of the self-turn in XW, YW, ZW (rad/s at "normal")
+function frame(now) {
+  const rawDt = (now - last) / 1000, dt = Math.min(0.1, rawDt); last = now;
+  if (playing) {
+    const sp = +$('speed').value, a = Math.floor(S);
+    playS += dt * sp * Math.max(2, playS * Math.LN10 * 0.45);
+    let ended = false;
+    if (playS >= P.max) { playS = P.max; playing = false; ended = true; saveHash(); }
+    if (Math.floor(playS) !== Math.floor(S)) dirty = true;
+    S = playS;
+    SND.dots(Math.min(a, generated), Math.min(Math.floor(S), generated), dt, false);
+    if (ended) SND.finale();
+  }
+  SND.groove(playing && S > 40);
+  const calm = !playing || S > 400;      // like the 3D explorer: hold still while the first dots are played one by one
+  const turning4 = P.auto && !dragging && calm, spinning = P.spin && !dragging && calm;
+  if (turning4) { for (let a = 0; a < 3; a++) P.rot[a] = wrap(P.rot[a] + dt * AUTO[a] * P.aspeed * 180 / Math.PI); dirty = true; }
+  if (spinning) { cam.yaw += dt * 0.22; dirty = true; }
+  moving = turning4 || spinning || dragging || playing;
+  if (wasMoving && !moving) dirty = true;        // it stopped: one more frame with every dot
+  wasMoving = moving;
+  // keep it smooth: while moving, fewer dots when frames run slow, more when there's room (never while the dice still roll)
+  if (moving && dirty && rawDt < 0.25 && !document.hidden) {   // (slower than 4 fps = a throttled background window, not the GPU)
+    emaDt = emaDt * 0.9 + rawDt * 0.1;
+    if (!busy && now - lastAdapt > 400) {
+      if (emaDt > 1 / 40 && lastDrawn > 150000) { drawCap = Math.max(150000, Math.floor(lastDrawn * 0.75)); lastAdapt = now; emaDt = 1 / 44; }
+      else if (emaDt < 1 / 48 && drawCap < Infinity) { drawCap *= 1.25; if (drawCap >= P.max) drawCap = Infinity; lastAdapt = now; }
+    }
+  }
+  if (dirty) { dirty = false; render(); frames++; }
+  readouts();
+  if (now - fpsT > 500) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  $('status').textContent = now < flashUntil ? flashMsg
+    : `${fmt(lastDrawn)}${lastDrawn < lastSd ? ` of ${fmt(lastSd)}` : ''} dots drawn · ${fps.toFixed(0)} redraws/s` + (lastDrawn < lastSd ? ' (fewer while it moves, to stay smooth)' : '')
+      + (busy ? ` · rolling ${Math.round(generated / P.max * 100)}%` : lastGenMs ? ` · ${fmt(P.max)} rolls took ${(lastGenMs / 1000).toFixed(2)} s` : '');
+  requestAnimationFrame(frame);
+}
+buildPresets();
+$('volMusic').value = SND.vol.music; $('volDice').value = SND.vol.dice;
+$('volMusic').oninput = (e) => SND.setVol('music', +e.target.value);
+$('volDice').oninput = (e) => SND.setVol('dice', +e.target.value);
+$('sound').onclick = async () => { const on = await SND.toggle(); $('sound').textContent = on ? '♪ Sound on (click to mute)' : '♪ Turn sound on'; $('sound').classList.toggle('on', on); };
+window.addEventListener('resize', () => { fit(); });
+resize();
+window.__cg4 = { get P() { return P; }, get geom() { return geom; }, dimension, get generated() { return generated; }, get busy() { return busy; },
+  applyPreset, get drawCap() { return drawCap; }, set dirty(v) { dirty = v; }, cam, fit,
+  bench(n = 10, mv = true) { const m = moving; moving = mv; drawCap = Infinity; render(); gl.finish(); const t = performance.now(); for (let i = 0; i < n; i++) { P.rot[0] += 1; render(); } gl.finish(); moving = m; return (performance.now() - t) / n; } };   // test hook (screenshots, checks)
+
+
+// ---------------- visit counter: one ping to GoatCounter per visit (no cookies, no outside script) ----------------
+// Open the page with #toggle-goatcounter to stop (or restart) counting your own visits on that browser.
+(() => {
+  let skip = false; try { skip = localStorage.getItem('skipgc') === 't'; } catch {}
+  if (location.hash === '#toggle-goatcounter') {
+    skip = !skip; try { skip ? localStorage.setItem('skipgc', 't') : localStorage.removeItem('skipgc'); } catch {}
+    history.replaceState(null, '', location.pathname + location.search);
+    const d = document.createElement('div');
+    d.textContent = skip ? 'Your visits on this browser are no longer counted.' : 'Your visits on this browser are counted again.';
+    d.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#222d;color:#fff;padding:10px 16px;border-radius:8px;font:14px system-ui,sans-serif;z-index:99';
+    document.body.appendChild(d); setTimeout(() => d.remove(), 6000); return;
+  }
+  if (skip || navigator.webdriver || location.hostname !== 'cleocat75.github.io') return;
+  const q = new URLSearchParams({ p: location.pathname, t: document.title, r: document.referrer,
+    s: [screen.width, screen.height, window.devicePixelRatio || 1].join(','), rnd: Math.random().toString(36).slice(2) });
+  new Image().src = 'https://cleocat75.goatcounter.com/count?' + q;
+})();
+
+if (!location.hash || !loadHash()) applyPreset(0);
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
